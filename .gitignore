@@ -1,0 +1,67 @@
+# Python cache
+__pycache__/
+*.pyc
+.pytest_cache/
+*.py[cod]
+*$py.class
+*.so
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Environnements virtuels
+.venv/
+venv/
+env/
+
+# Variables d'env
+.env
+.env.local
+
+# Tests
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Logs
+logs/*.log
+logs/*.log.*
+logs/*.gz
+!logs/.gitkeep
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Données
+data/*.csv
+data/*.parquet
+data/*.json
+!data/.gitkeep
+
+# Build / distribution
+build/
+dist/
+*.egg-info/
+
+# Modèles trop lourds pour Git (gérer manuellement si < 10 Mo compressé)
+models/*.pt
+models/*.pth
+models/*.joblib
+models/*.pkl
+models/*.h5
+!models/.gitkeep
+
+# Cache HuggingFace
+.cache/
+~/.cache/huggingface/
+
+# Docker
+.dockerignore
