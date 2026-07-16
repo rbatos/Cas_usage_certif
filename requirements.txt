@@ -1,0 +1,14 @@
+# M4-B1 — requirements
+# Python 3.11+
+
+# Core ML
+pandas==2.2.2
+numpy==1.26.4
+
+# Visualisation
+matplotlib==3.9.2
+seaborn==0.13.2
+
+# Notebook
+jupyter==1.1.1
+ipykernel==6.29.5
