@@ -12,7 +12,7 @@ Créer un système d’IA pour prédire le délai de retour à l’emploi (3 cla
 - [ ] Préparation des scénarios
 
 ### Modélisation et Évaluation
-- [ ] Choix des modèles à comparer
+- [ ] Choix des modèles à comparer (Random Forest, LightGBM, XGBoost, ...)
 - [ ] Définition des métriques d’évaluation
 - [ ] Entraînement et optimisation
 - [ ] Analyse des résultats
