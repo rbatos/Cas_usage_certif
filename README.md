@@ -7,8 +7,8 @@ Créer un système d’IA pour prédire le délai de retour à l’emploi (3 cla
 ## ✅ État d’avancement du projet
 
 ### Compréhension du Sujet et Préparation des Données
-- [ ] Compréhension du sujet (analyse + livrables)
-- [ ] EDA (chargement, variables sensibles, feature engineering, encodage)
+- [x] Compréhension du sujet (analyse + livrables)
+- [x] EDA (chargement, variables sensibles, feature engineering, encodage)
 - [ ] Préparation des scénarios
 
 ### Modélisation et Évaluation
