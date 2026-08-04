@@ -42,11 +42,12 @@ Créer un système d’IA pour prédire le délai de retour à l’emploi (3 cla
 
 ```text
 Cas_usage_certif/
-├── flux_donnees.md
 ├── README.md
 ├── requirements.txt
 ├── data/
-│   └── dataset_trajectoire_emploi_Sujet Examen CISIA - Promo U...
+│   └── dataset_trajectoire_emploi_Sujet Examen CISIA - Promo U...     => .gitignore pour le moment... à réfléchir!
+├── docs/
+│   └── Sujet Examen CISIA.md
 └── notebooks/
     ├── journal-de-bord.ipynb
     └── matrice-notebook-romain.ipynb
@@ -83,7 +84,7 @@ jupyter notebook notebooks/TODO.ipynb
 ## 🧪 Données / Features (à préciser dans le notebook)
 
 - Variables tabulaires socio-pro
-- Variables textuelles (freins, parcours, commentaires)
+- Variables textuelles (commentaires)
 - Variable cible : délai de retour à l’emploi (3 classes)
 
 ---
