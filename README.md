@@ -9,18 +9,18 @@ Créer un système d’IA pour prédire le délai de retour à l’emploi (3 cla
 ### Compréhension du Sujet et Préparation des Données
 - [x] Compréhension du sujet (analyse + livrables)
 - [x] EDA (chargement, variables sensibles, feature engineering, encodage)
-- [ ] Préparation des scénarios
+- [x] Préparation des scénarios
 
 ### Modélisation et Évaluation
-- [ ] Choix des modèles à comparer (Random Forest, LightGBM, XGBoost, ...)
-- [ ] Définition des métriques d’évaluation
-- [ ] Entraînement et optimisation
-- [ ] Analyse des résultats
+- [x] Choix des modèles à comparer (Random Forest, LightGBM, XGBoost, ...)
+- [x] Définition des métriques d’évaluation
+- [x] Entraînement et optimisation
+- [x] Analyse des résultats
 
 ### Analyse Éthique et Réglementaire
-- [ ] Conformité RGPD / CNIL
-- [ ] Analyse biais / discrimination
-- [ ] Responsabilité juridique
+- [x] Conformité RGPD / CNIL
+- [x] Analyse biais / discrimination
+- [?] Responsabilité juridique
 
 ### Industrialisation et Déploiement
 - [ ] Architecture cible
@@ -48,6 +48,11 @@ Cas_usage_certif/
 │   └── dataset_trajectoire_emploi_Sujet Examen CISIA - Promo U...     => .gitignore pour le moment... à réfléchir!
 ├── docs/
 │   └── Sujet Examen CISIA.md
+├── modele/
+│   ├── modele_final.joblib                  => modèle entraîné sauvegardé
+│   ├── metadonnees_modele.json              => version, métriques, features, mapping cible
+│   ├── rapport_classification.csv           => métriques détaillées par classe
+│   └── predictions_test.csv                 => prédictions sur le jeu de test
 └── notebooks/
     ├── journal-de-bord.ipynb
     └── matrice-notebook-romain.ipynb
@@ -67,7 +72,7 @@ pip install -r requirements.txt
 
 2. Lancer Jupyter :
 ```powershell
-jupyter notebook notebooks/TODO.ipynb
+jupyter notebook notebooks/matrice-notebook-romain.ipynb
 ```
 
 ---
@@ -91,6 +96,6 @@ jupyter notebook notebooks/TODO.ipynb
 
 ## 📌 Livrables attendus
 
-- Notebook d’analyse (`notebooks/`)
+- Notebook d’analyse (`notebooks/matrice-notebook-romain.ipynb`)
 - Journal de bord (`notebooks/journal-de-bord.ipynb`)
 - Support de soutenance

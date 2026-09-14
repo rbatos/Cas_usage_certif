@@ -1,0 +1,58 @@
+{
+  "modele": "modele_logreg",
+  "model_version": "1.0",
+  "session_date": "2026-09-14T21:50",
+  "created_at": "2026-09-14T21:34:19.988049+00:00",
+  "scenario": "S1_multimodale_complete",
+  "chemin": "..\\models\\modele_logreg_S1_multimodale_complete.joblib",
+  "python_version": "3.11.9",
+  "numpy_version": "1.26.4",
+  "pandas_version": "2.2.2",
+  "dataset": "dataset_trajectoire_emploi_Sujet Examen CISIA - Promo Upskilling Atlas - mai-oct2026 (Session-00279143).csv",
+  "dataset_source": "../data",
+  "dataset_version": "2026-07-08",
+  "hyperparameters": {
+    "C": 0.1,
+    "class_weight": {
+      "0": 1.0,
+      "1": 2.0,
+      "2": 5.0
+    },
+    "dual": false,
+    "fit_intercept": true,
+    "intercept_scaling": 1,
+    "l1_ratio": null,
+    "max_iter": 1000,
+    "multi_class": "deprecated",
+    "n_jobs": -1,
+    "penalty": "l2",
+    "random_state": 42,
+    "solver": "lbfgs",
+    "tol": 0.0001,
+    "verbose": 0,
+    "warm_start": false
+  },
+  "metriques": {
+    "f1_macro_test": 0.651,
+    "ecart_type_test": 0.472,
+    "recall_classe_2_test": 0.722,
+    "precision_classe_2_test": 0.474,
+    "f1_class_2_test": 0.573,
+    "erreur_critique_2_vers_0_test": 0.022,
+    "temps_fit_s": 2.745,
+    "latence_moyenne_ms": 9.902,
+    "latence_p95_ms": 13.553,
+    "cout_inference_euros_1000": 0.001
+  },
+  "features_columns": [
+    "age",
+    "niveau_diplome",
+    "anciennete_poste_ans",
+    "code_rome_vise",
+    "est_allocataire",
+    "nationalite_hors_ue",
+    "synthese_entretien",
+    "departement"
+  ],
+  "target_column": "classe_retour_emploi"
+}

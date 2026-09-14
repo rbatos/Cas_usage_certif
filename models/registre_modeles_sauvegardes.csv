@@ -1,0 +1,4 @@
+modele,scenario,chemin,temps_fit_s
+modele_lgbm,S1_multimodale_complete,..\models\modele_lgbm_S1_multimodale_complete.joblib,6.053
+modele_logreg,S1_multimodale_complete,..\models\modele_logreg_S1_multimodale_complete.joblib,2.745
+modele_rfc,S1_multimodale_complete,..\models\modele_rfc_S1_multimodale_complete.joblib,1.418
