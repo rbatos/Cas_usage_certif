@@ -51,8 +51,7 @@ Cas_usage_certif/
 ├── modele/
 │   ├── modele_final.joblib                  => modèle entraîné sauvegardé
 │   ├── metadonnees_modele.json              => version, métriques, features, mapping cible
-│   ├── rapport_classification.csv           => métriques détaillées par classe
-│   └── predictions_test.csv                 => prédictions sur le jeu de test
+│   ├── registre_modeles_sauvegardes.csv     => liste des modèles sauvegardés
 └── notebooks/
     ├── journal-de-bord.ipynb
     └── matrice-notebook-romain.ipynb
