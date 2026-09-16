@@ -44,6 +44,9 @@ Créer un système d’IA pour prédire le délai de retour à l’emploi (3 cla
 Cas_usage_certif/
 ├── README.md
 ├── requirements.txt
+├── app
+│   ├── main.py
+│   └── schemas.py
 ├── data/
 │   └── dataset_trajectoire_emploi_Sujet Examen CISIA - Promo U...     => .gitignore pour le moment... à réfléchir!
 ├── docs/
@@ -72,6 +75,11 @@ pip install -r requirements.txt
 2. Lancer Jupyter :
 ```powershell
 jupyter notebook notebooks/matrice-notebook-romain.ipynb
+```
+
+3. Test vi uvicorn :
+```powershell
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
 ```
 
 ---

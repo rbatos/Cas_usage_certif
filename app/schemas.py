@@ -1,0 +1,86 @@
+"""Schémas Pydantic d'entrée et sortie de l'API.
+
+L'API attend les 8 features décrivant le demandeur d'emploi (hors `usager_id` qui n'entre pas dans le modèle)
+et retourne la classe prédite + les probabilités associées.
+Seul `niveau_diplome` est autorisée à être manquante
+"""
+
+from typing import Literal
+from pydantic import BaseModel, Field
+
+
+NiveauDiplome = Literal["Sans diplôme", "Bac", "Bac+2", "Bac+5"]
+IndicateurBinaire = Literal["0", "1"]
+
+
+class Demandeur(BaseModel):
+    """Données d'entrée d'une prédiction de retour à l'emploi.
+
+    Les bornes des champs reflètent les plages observées dans le dataset
+    d'entraînement et servent de garde-fou contre les entrées aberrantes.
+    """
+    age: int = Field(
+        ge=18,
+        le=63,
+        description="Âge observé dans le dataset : 18 à 63 ans"
+    )
+    niveau_diplome: NiveauDiplome | None = Field(
+        None,
+        description="Valeurs possibles : Sans diplôme, Bac, Bac+2 ou Bac+5",
+    )
+    anciennete_poste_ans: float = Field(
+        ge=0,
+        le=30,
+        description="Ancienneté observée dans le dataset : 0 à 30 ans",
+    )
+    code_rome_vise: str = Field(
+        ...,
+        min_length=5,
+        max_length=5,
+        description="Code ROME à 5 caractères",
+    )
+    code_insee_commune: str = Field(
+        ...,
+        min_length=4,
+        max_length=5,
+        description="Code INSEE observé sur 4 ou 5 caractères",
+    )
+    est_allocataire: IndicateurBinaire = Field(
+        ..., description="Valeurs possibles : 0 ou 1",
+    )
+    nationalite_hors_ue: IndicateurBinaire = Field(
+        ..., description="Valeurs possibles : 0 ou 1",
+    )
+    synthese_entretien: str = Field(
+        ..., min_length=1, description="Synthèse non vide de l'entretien",
+    )
+
+
+class DemandeurPredictionInput(Demandeur):
+    """Payload utilisé par la route `/predict`, avec les mêmes contraintes."""
+
+
+RetourEmploi = Literal["bas", "moyen", "long"]
+
+class PredictionResponse(BaseModel):
+    """Sortie d'une prédiction : classe + probabilités."""
+
+    retour_emploi: RetourEmploi = Field(description="Classe prédite par le modèle.")
+    probabilites: dict[RetourEmploi, float] = Field(
+        description="Probabilité par classe (somme = 1.0).",
+    )
+
+
+class HealthResponse(BaseModel):
+    """Sortie de la route /health."""
+
+    status: Literal["ok", "degraded"] = Field(description="Statut global du service.")
+    model_loaded: bool = Field(description="Vrai si le modèle est chargé en mémoire.")
+
+
+class TrainResponse(BaseModel):
+    """Résultat d'un entraînement explicite du modèle."""
+
+    status: Literal["trained"] = Field(description="Statut de l'entraînement.")
+    model_path: str = Field(description="Chemin du modèle sauvegardé.")
+    training_rows: int = Field(description="Nombre de lignes utilisées pour l'entraînement.")
