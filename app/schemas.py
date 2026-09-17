@@ -6,11 +6,12 @@ Seul `niveau_diplome` est autorisée à être manquante
 """
 
 from typing import Literal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 NiveauDiplome = Literal["Sans diplôme", "Bac", "Bac+2", "Bac+5"]
 IndicateurBinaire = Literal["0", "1"]
+RetourEmploi = Literal["bas", "moyen", "long"]
 
 
 class Demandeur(BaseModel):
@@ -19,6 +20,11 @@ class Demandeur(BaseModel):
     Les bornes des champs reflètent les plages observées dans le dataset
     d'entraînement et servent de garde-fou contre les entrées aberrantes.
     """
+    model_config = ConfigDict(
+        extra="forbid",
+        str_strip_whitespace=True,
+    )
+
     age: int = Field(
         ge=18,
         le=63,
@@ -37,12 +43,14 @@ class Demandeur(BaseModel):
         ...,
         min_length=5,
         max_length=5,
+        pattern=r"^[A-Z][0-9]{4}$",
         description="Code ROME à 5 caractères",
     )
     code_insee_commune: str = Field(
         ...,
         min_length=4,
         max_length=5,
+        pattern=r"^(?:[0-9]{4,5}|2[AB][0-9]{3})$",
         description="Code INSEE observé sur 4 ou 5 caractères",
     )
     est_allocataire: IndicateurBinaire = Field(
@@ -55,12 +63,14 @@ class Demandeur(BaseModel):
         ..., min_length=1, description="Synthèse non vide de l'entretien",
     )
 
+    @model_validator(mode="after")
+    def validate_age_and_experience(self) -> "Demandeur":
+        if self.age - self.anciennete_poste_ans <= 15:
+            raise ValueError(
+                "L'ancienneté est incompatible avec l'âge : le début d'activité doit être postérieur à 15 ans."
+            )
+        return self
 
-class DemandeurPredictionInput(Demandeur):
-    """Payload utilisé par la route `/predict`, avec les mêmes contraintes."""
-
-
-RetourEmploi = Literal["bas", "moyen", "long"]
 
 class PredictionResponse(BaseModel):
     """Sortie d'une prédiction : classe + probabilités."""

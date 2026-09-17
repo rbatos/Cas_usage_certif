@@ -46,18 +46,23 @@ Cas_usage_certif/
 ├── requirements.txt
 ├── app
 │   ├── main.py
+│   ├── middleware.py
 │   └── schemas.py
 ├── data/
 │   └── dataset_trajectoire_emploi_Sujet Examen CISIA - Promo U...     => .gitignore pour le moment... à réfléchir!
 ├── docs/
 │   └── Sujet Examen CISIA.md
+├── logs/
+│   └── api.log                              => logs middleware
 ├── modele/
 │   ├── modele_final.joblib                  => modèle entraîné sauvegardé
 │   ├── metadonnees_modele.json              => version, métriques, features, mapping cible
 │   ├── registre_modeles_sauvegardes.csv     => liste des modèles sauvegardés
 └── notebooks/
-    ├── journal-de-bord.ipynb
-    └── matrice-notebook-romain.ipynb
+│   ├── journal-de-bord.ipynb
+│   └── matrice-notebook-romain.ipynb
+└── tests
+    └── test_api.py
 ```
 
 ---
@@ -80,6 +85,11 @@ jupyter notebook notebooks/matrice-notebook-romain.ipynb
 3. Test vi uvicorn :
 ```powershell
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
+```
+
+4. Tests Pytest
+```powershell
+.\.venv\Scripts\python.exe -m pytest -v
 ```
 
 ---

@@ -20,5 +20,10 @@ xgboost==2.1.1
 lightgbm==4.5.0
 
 # API
+pydantic==2.13.5
 fastapi==0.115.6
+loguru==0.7.3
 uvicorn[standard]==0.34.0
+
+# Tests
+pytest==8.3.4

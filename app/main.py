@@ -4,6 +4,7 @@ from pathlib import Path
 from threading import Lock
 
 import joblib
+import sys
 import pandas as pd
 from fastapi import FastAPI, HTTPException
 from lightgbm import LGBMClassifier
@@ -13,7 +14,10 @@ from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import FunctionTransformer, OneHotEncoder, OrdinalEncoder, StandardScaler
 
+from app.middleware import RequestLoggingMiddleware
 from app.schemas import HealthResponse, PredictionResponse, TrainResponse, Demandeur
+
+from loguru import logger
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -28,35 +32,83 @@ MODEL_LOCK = Lock()
 pipeline_lgbm = None
 model_load_error = None
 
+# --- Loguru configuration ---------------------------------------------------
+# Configuration Loguru (au démarrage du module)
+LOGS_DIR = Path(__file__).parent.parent / "logs"
+LOGS_DIR.mkdir(exist_ok=True)
+
+logger.remove()  # vire le handler par défaut
+def log_format(record):
+    """Format compact qui supporte les messages contenant des dictionnaires."""
+    request_id = record["extra"].get("request_id", "-")
+    timestamp = record["time"].strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+    level = record["level"].name.ljust(8)
+    message = record["message"].replace("{", "{{").replace("}", "}}")
+    return f"<green>{timestamp}</green> | <level>{level}</level> | request_id={request_id} | {message}\n"
+
+
+logger.add(sys.stderr, level="INFO", colorize=True, format=log_format)
+# Configuration du log rotate
+logger.add(
+    LOGS_DIR / "api.log",
+    rotation="10 MB",       # nouveau fichier à 10 Mo
+    retention="7 days",     # garde 7 jours d'historique
+    compression="gz",       # compresse les anciens fichiers
+    format=log_format,
+    enqueue=True,           # thread-safe
+    level="INFO",
+)
+
 app = FastAPI(
     title="API orientation retour à l'emploi",
     version="1.0.0",
 )
+app.add_middleware(RequestLoggingMiddleware)
 
 
 def flatten_text(values):
-    """Transforme la colonne texte 2D en vecteur 1D pour TF-IDF."""
+    """Transforme la colonne texte 2D en vecteur 1D pour TF-IDF.
+
+    Args:
+        values (np.ndarray): Colonne texte 2D.
+
+    Returns:
+        np.ndarray: Vecteur 1D aplati.
+    """
     return values.ravel()
 
 
 def load_model() -> None:
-    """Charge le pipeline complet, prétraitement inclus."""
+    """Charge le pipeline complet, prétraitement inclus.
+
+    Raises:
+        RuntimeError: Si le modèle ne peut pas être chargé.
+    """
     global model_load_error, pipeline_lgbm
+    logger.info("Chargement du modèle: {}", MODEL_PATH)
     if not MODEL_PATH.exists():
         pipeline_lgbm = None
         model_load_error = f"Fichier modèle absent : {MODEL_PATH}"
+        logger.error("Modèle introuvable: {}", MODEL_PATH)
         return
     try:
         pipeline_lgbm = joblib.load(MODEL_PATH)
         model_load_error = None
+        logger.info("Modèle chargé avec succès")
     except (OSError, EOFError, ImportError, AttributeError, ValueError) as error:
         pipeline_lgbm = None
         model_load_error = f"Chargement du modèle impossible : {error}"
+        logger.exception("Échec du chargement du modèle")
 
 
 def ensure_model_loaded() -> bool:
-    """Recharge le modèle si le serveur n'a pas exécuté son démarrage."""
+    """Recharge le modèle si le serveur n'a pas exécuté son démarrage.
+
+    Returns:
+        bool: True si le modèle est chargé en mémoire, False sinon.
+    """
     if pipeline_lgbm is None:
+        logger.debug("Modèle absent de la mémoire, tentative de chargement")
         with MODEL_LOCK:
             if pipeline_lgbm is None:
                 load_model()
@@ -64,7 +116,15 @@ def ensure_model_loaded() -> bool:
 
 
 def request_to_features(request: Demandeur) -> pd.DataFrame:
-    """Convertit le payload API dans le schéma attendu par le pipeline."""
+    """Convertit le payload API dans le schéma attendu par le pipeline.
+
+    Args:
+        request (Demandeur): Objet représentant la requête API.
+
+    Returns:
+        pd.DataFrame: DataFrame contenant les features prêtes pour la prédiction.
+    """
+    logger.debug("Préparation des features pour la prédiction")
     payload = request.model_dump()
     code_insee = str(payload.pop("code_insee_commune"))
     payload["departement"] = code_insee[:2]
@@ -75,13 +135,31 @@ def request_to_features(request: Demandeur) -> pd.DataFrame:
 
 @app.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
+    """Point de terminaison pour vérifier l'état de santé de l'API.
+
+    Returns:
+        HealthResponse: Objet contenant le statut de santé et l'état de chargement du modèle.
+    """
     loaded = ensure_model_loaded()
+    logger.info("Contrôle de santé: model_loaded={}", loaded)
     return HealthResponse(status="ok" if loaded else "degraded", model_loaded=loaded)
 
 
 @app.post("/predict", response_model=PredictionResponse)
 def predict(request: Demandeur) -> PredictionResponse:
+    """Point de terminaison pour effectuer une prédiction.
+
+    Args:
+        request (Demandeur): Objet représentant la requête API.
+
+    Returns:
+        PredictionResponse: Objet contenant la classe prédite et les probabilités par classe.
+    """
+    request_data = request.model_dump(exclude={"synthese_entretien"})
+    request_data["synthese_entretien_length"] = len(request.synthese_entretien)
+    logger.info("Paramètres validés pour la prédiction: {}", request_data)
     if not ensure_model_loaded():
+        logger.error("Prédiction impossible: modèle indisponible")
         raise HTTPException(
             status_code=503,
             detail=model_load_error or "Modèle indisponible",
@@ -92,17 +170,27 @@ def predict(request: Demandeur) -> PredictionResponse:
         probabilities = pipeline_lgbm.predict_proba(features)[0]
         predicted_class = int(pipeline_lgbm.predict(features)[0])
 
-    return PredictionResponse(
+    response = PredictionResponse(
         retour_emploi=CLASS_LABELS[predicted_class],
         probabilites={
             CLASS_LABELS[index]: float(probability)
             for index, probability in enumerate(probabilities)
         },
     )
+    logger.info(
+        "Prédiction retournée: retour_emploi={} probabilites={}",
+        response.retour_emploi,
+        response.probabilites,
+    )
+    return response
 
 
 def build_training_pipeline() -> Pipeline:
-    """Reconstruit le même prétraitement que celui utilisé pour le modèle S1."""
+    """Reconstruit le même prétraitement que celui utilisé pour le modèle S1.
+
+    Returns:
+        Pipeline: Pipeline de prétraitement et de modèle prêt pour l'entraînement.
+    """
     numeric_columns = ["age", "anciennete_poste_ans"]
     categorical_columns = [
         "nationalite_hors_ue",
@@ -151,12 +239,20 @@ def build_training_pipeline() -> Pipeline:
 
 @app.post("/train", response_model=TrainResponse)
 def train() -> TrainResponse:
+    """Point de terminaison pour entraîner le modèle.
+
+    Returns:
+        TrainResponse: Objet contenant le statut de l'entraînement, le chemin du modèle sauvegardé et le nombre de lignes utilisées pour l'entraînement.
+    """
     global pipeline_lgbm
+    logger.info("Début de l'entraînement")
     if not DATA_PATH.exists():
+        logger.error("Jeu de données introuvable: {}", DATA_PATH)
         raise HTTPException(status_code=404, detail="Jeu de données introuvable")
 
     try:
         data = pd.read_csv(DATA_PATH)
+        logger.info("Jeu de données chargé: {} lignes, {} colonnes", len(data), len(data.columns))
         target = "classe_retour_emploi"
         if target not in data.columns:
             raise ValueError(f"Colonne cible absente : {target}")
@@ -173,7 +269,9 @@ def train() -> TrainResponse:
             new_pipeline.fit(features, data[target])
             joblib.dump(new_pipeline, MODEL_PATH)
             pipeline_lgbm = new_pipeline
+        logger.info("Entraînement terminé: {} lignes, modèle sauvegardé", len(features))
     except (OSError, ValueError, KeyError) as error:
+        logger.exception("Échec de l'entraînement")
         raise HTTPException(status_code=422, detail=f"Entraînement impossible : {error}") from error
 
     return TrainResponse(
