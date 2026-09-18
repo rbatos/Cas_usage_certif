@@ -63,6 +63,11 @@ Cas_usage_certif/
 └── notebooks/
 │   ├── journal-de-bord.ipynb
 │   └── matrice-notebook-romain.ipynb
+├── services/
+│   └── ui-streamlit/                     => interface web conseiller (saisie features -> prédiction + probas)
+|      ├── app.py
+|      ├── Dockerfile
+|      └── requirements.txt
 └── tests
     └── test_api.py
 ```
@@ -88,8 +93,16 @@ jupyter notebook notebooks/matrice-notebook-romain.ipynb
 ```powershell
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
 ```
+=> URL utilisable : `http://127.0.0.1:8000/docs`
 
-4. Tests Pytest
+4. Lancer l'interface conseiller (Streamlit) — l'API doit tourner en parallèle :
+```powershell
+$env:API_URL="http://127.0.0.1:8000"
+.\.venv\Scripts\python.exe -m streamlit run services\ui-streamlit\app.py
+```
+=> URL utilisable : `http://localhost:8502`
+
+5. Tests Pytest
 ```powershell
 .\.venv\Scripts\python.exe -m pytest -v
 ```

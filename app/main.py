@@ -1,5 +1,6 @@
 """API FastAPI pour la prédiction et l'entraînement du modèle emploi."""
 
+from contextlib import asynccontextmanager
 from pathlib import Path
 from threading import Lock
 
@@ -22,7 +23,7 @@ from loguru import logger
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
-MODEL_PATH = ROOT_DIR / "models" / "modele_lgbm_S1_multimodale_complete.joblib"
+MODEL_PATH = ROOT_DIR / "models" / "modele_lgbm_v1.0_S1_multimodale_complete.joblib"
 DATA_PATH = ROOT_DIR / "data" / (
     "dataset_trajectoire_emploi_Sujet Examen CISIA - Promo Upskilling Atlas "
     "- mai-oct2026 (Session-00279143).csv"
@@ -60,10 +61,26 @@ logger.add(
     level="INFO",
 )
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Charge le modèle au démarrage, le libère à l'arrêt.
+
+    Politique fail-fast : si `load_model` échoue, l'exception remonte,
+    Uvicorn s'arrête et le conteneur sort en erreur (pas d'API zombie
+    qui répondrait OK avec un modèle cassé ou absent).
+    """
+    global pipeline_lgbm
+    load_model()
+    yield
+    pipeline_lgbm = None
+    logger.info("Modèle libéré à l'arrêt de l'API")
+
+
 app = FastAPI(
     title="API orientation retour à l'emploi",
     version="1.0.0",
     redoc_url=None,
+    lifespan=lifespan,
 )
 app.add_middleware(RequestLoggingMiddleware)
 
@@ -93,28 +110,37 @@ def flatten_text(values):
 def load_model() -> None:
     """Charge le pipeline complet, prétraitement inclus.
 
+    Politique fail-fast : toute erreur (fichier absent, import impossible,
+    mémoire insuffisante...) est journalisée puis relevée telle quelle,
+    pour que l'appelant (le lifespan au démarrage) laisse l'exception
+    remonter et stoppe l'API plutôt que de continuer avec un modèle cassé.
+
     Raises:
-        RuntimeError: Si le modèle ne peut pas être chargé.
+        FileNotFoundError: Si le fichier modèle est absent.
+        OSError | EOFError | ImportError | AttributeError | ValueError | MemoryError:
+            Si le désérialisation du modèle échoue.
     """
     global model_load_error, pipeline_lgbm
     logger.info("Chargement du modèle: {}", MODEL_PATH)
     if not MODEL_PATH.exists():
-        pipeline_lgbm = None
         model_load_error = f"Fichier modèle absent : {MODEL_PATH}"
         logger.error("Modèle introuvable: {}", MODEL_PATH)
-        return
+        raise FileNotFoundError(model_load_error)
     try:
         pipeline_lgbm = joblib.load(MODEL_PATH)
         model_load_error = None
         logger.info("Modèle chargé avec succès")
-    except (OSError, EOFError, ImportError, AttributeError, ValueError) as error:
-        pipeline_lgbm = None
+    except (OSError, EOFError, ImportError, AttributeError, ValueError, MemoryError) as error:
         model_load_error = f"Chargement du modèle impossible : {error}"
         logger.exception("Échec du chargement du modèle")
+        raise
 
 
 def ensure_model_loaded() -> bool:
     """Recharge le modèle si le serveur n'a pas exécuté son démarrage.
+
+    Contrairement au lifespan, on ne fait pas remonter l'exception ici :
+    une requête isolée doit se solder par un 503, pas par un crash du worker.
 
     Returns:
         bool: True si le modèle est chargé en mémoire, False sinon.
@@ -123,7 +149,10 @@ def ensure_model_loaded() -> bool:
         logger.debug("Modèle absent de la mémoire, tentative de chargement")
         with MODEL_LOCK:
             if pipeline_lgbm is None:
-                load_model()
+                try:
+                    load_model()
+                except Exception:
+                    return False
     return pipeline_lgbm is not None
 
 

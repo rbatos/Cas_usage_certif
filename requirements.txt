@@ -25,5 +25,8 @@ fastapi==0.115.6
 loguru==0.7.3
 uvicorn[standard]==0.34.0
 
+# UI conseiller
+-r services/ui-streamlit/requirements.txt
+
 # Tests
 pytest==8.3.4
