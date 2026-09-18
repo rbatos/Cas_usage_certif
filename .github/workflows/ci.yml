@@ -21,7 +21,7 @@ jobs:
       - name: Install API deps + outils de test
         run: pip install -r app/requirements.txt pytest httpx
       - name: Tests unitaires API
-        run: pytest -v
+        run: python -m pytest -v
 
   build-and-push:
     needs: test
