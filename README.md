@@ -42,6 +42,8 @@ Créer un système d’IA pour prédire le délai de retour à l’emploi (3 cla
 
 ```text
 Cas_usage_certif/
+├── flux_donnees.md
+├── pytest.ini
 ├── README.md
 ├── requirements.txt
 ├── app

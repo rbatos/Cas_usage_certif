@@ -7,6 +7,7 @@ import joblib
 import sys
 import pandas as pd
 from fastapi import FastAPI, HTTPException
+from fastapi.openapi.docs import get_redoc_html
 from lightgbm import LGBMClassifier
 from sklearn.compose import ColumnTransformer
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -62,8 +63,19 @@ logger.add(
 app = FastAPI(
     title="API orientation retour à l'emploi",
     version="1.0.0",
+    redoc_url=None,
 )
 app.add_middleware(RequestLoggingMiddleware)
+
+
+@app.get("/redoc", include_in_schema=False)
+def redoc_documentation():
+    """Expose ReDoc avec une version stable du bundle JavaScript."""
+    return get_redoc_html(
+        openapi_url=app.openapi_url,
+        title=f"{app.title} - ReDoc",
+        redoc_js_url="https://cdn.jsdelivr.net/npm/redoc@latest/bundles/redoc.standalone.js",
+    )
 
 
 def flatten_text(values):
