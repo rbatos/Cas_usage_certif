@@ -1,0 +1,10 @@
+# Dépendances de l'API (image Docker) — sous-ensemble de requirements.txt
+pandas==2.2.2
+numpy==1.26.4
+scikit-learn==1.5.1
+joblib==1.4.2
+lightgbm==4.5.0
+pydantic==2.13.5
+fastapi==0.115.6
+loguru==0.7.3
+uvicorn[standard]==0.34.0

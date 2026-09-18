@@ -46,9 +46,12 @@ Cas_usage_certif/
 ├── pytest.ini
 ├── README.md
 ├── requirements.txt
+├── Dockerfile                                => image API (uvicorn + modèle)
+├── docker-compose.yml                        => orchestration api + ui
 ├── app
 │   ├── main.py
 │   ├── middleware.py
+│   ├── requirements.txt                      => dépendances minimales de l'image API
 │   └── schemas.py
 ├── data/
 │   └── dataset_trajectoire_emploi_Sujet Examen CISIA - Promo U...     => .gitignore pour le moment... à réfléchir!
@@ -105,6 +108,26 @@ $env:API_URL="http://127.0.0.1:8000"
 5. Tests Pytest
 ```powershell
 .\.venv\Scripts\python.exe -m pytest -v
+```
+
+---
+
+## 🐳 Exécution avec Docker
+
+L'API et l'UI Streamlit peuvent aussi tourner en conteneurs, orchestrés par `docker-compose.yml` :
+
+```powershell
+docker compose up --build
+```
+
+- API : `http://localhost:8000` (docs sur `/docs`)
+- Interface conseiller : `http://localhost:8501`
+
+Le service `api` monte `models/`, `data/` et `logs/` en volumes. Le lifespan de l'API charge le modèle au démarrage et applique une politique **fail-fast** : si l'artefact modèle est absent ou corrompu, le conteneur `api` s'arrête en erreur (`docker compose ps` affiche `unhealthy`/exit) plutôt que de répondre avec un modèle cassé. Le service `ui` attend que `api` soit `healthy` (`depends_on: condition: service_healthy`) avant de démarrer, et le joint via `API_URL=http://api:8000`.
+
+Pour arrêter et supprimer les conteneurs :
+```powershell
+docker compose down
 ```
 
 ---
