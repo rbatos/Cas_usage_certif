@@ -48,6 +48,9 @@ Cas_usage_certif/
 ├── requirements.txt
 ├── Dockerfile                                => image API (uvicorn + modèle)
 ├── docker-compose.yml                        => orchestration api + ui
+├── .github/
+│   └── workflows/
+│       └── ci.yml                            => CI/CD : tests, build & push images GHCR
 ├── app
 │   ├── main.py
 │   ├── middleware.py
@@ -129,6 +132,17 @@ Pour arrêter et supprimer les conteneurs :
 ```powershell
 docker compose down
 ```
+
+---
+
+## ⚙️ CI/CD (GitHub Actions)
+
+Le workflow [`.github/workflows/ci.yml`](.github/workflows/ci.yml) automatise deux étapes :
+
+1. **`test`** (à chaque push et pull request) : installe les dépendances de `app/requirements.txt` + `pytest`/`httpx`, puis exécute `pytest -v`. Un test qui échoue bloque tout le reste.
+2. **`build-and-push`** (uniquement sur push vers `main` ou tag `v*`, après succès de `test`) : construit les images `api` et `ui` en parallèle (matrice) et les publie sur GitHub Container Registry (GHCR), taguées avec le SHA du commit, `latest` et la branche/tag.
+
+Déclencheurs : `push` sur `main`, tags `v*`, `pull_request` vers `main`, et déclenchement manuel (`workflow_dispatch`).
 
 ---
 

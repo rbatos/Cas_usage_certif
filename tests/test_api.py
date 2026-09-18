@@ -28,7 +28,12 @@ class FakePipeline:
 
 @pytest.fixture
 def client(monkeypatch):
-    """Client API avec un pipeline de prédiction contrôlé."""
+    """Client API avec un pipeline de prédiction contrôlé.
+
+    Le lifespan appelle load_model() au démarrage : on le neutralise pour
+    que le FakePipeline ne soit pas écrasé par un chargement réel du modèle.
+    """
+    monkeypatch.setattr(main, "load_model", lambda: None)
     monkeypatch.setattr(main, "pipeline_lgbm", FakePipeline())
     monkeypatch.setattr(main, "model_load_error", None)
     with TestClient(main.app) as test_client:
