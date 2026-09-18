@@ -23,12 +23,12 @@ Créer un système d’IA pour prédire le délai de retour à l’emploi (3 cla
 - [?] Responsabilité juridique
 
 ### Industrialisation et Déploiement
-- [ ] Architecture cible
-- [ ] Contraintes techniques
-- [ ] CI/CD et monitoring
+- [x] Architecture cible
+- [x] Contraintes techniques
+- [x] CI/CD et monitoring
 
 ### Réflexion sur les Erreurs Critiques et Optimisation
-- [ ] Identification des erreurs critiques
+- [x] Identification des erreurs critiques
 - [ ] Stratégies de réduction
 - [ ] Évaluation des améliorations
 
