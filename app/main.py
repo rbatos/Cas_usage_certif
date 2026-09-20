@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from threading import Lock
 
+import json
 import joblib
 import sys
 import pandas as pd
@@ -13,11 +14,20 @@ from lightgbm import LGBMClassifier
 from sklearn.compose import ColumnTransformer
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.impute import SimpleImputer
+from sklearn.metrics import accuracy_score, f1_score
+from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import FunctionTransformer, OneHotEncoder, OrdinalEncoder, StandardScaler
 
 from app.middleware import RequestLoggingMiddleware
-from app.schemas import HealthResponse, PredictionResponse, TrainResponse, Demandeur
+from app.schemas import (
+    Demandeur,
+    FeedbackCorrection,
+    FeedbackResponse,
+    HealthResponse,
+    PredictionResponse,
+    TrainResponse,
+)
 
 from loguru import logger
 
@@ -28,9 +38,20 @@ DATA_PATH = ROOT_DIR / "data" / (
     "dataset_trajectoire_emploi_Sujet Examen CISIA - Promo Upskilling Atlas "
     "- mai-oct2026 (Session-00279143).csv"
 )
+FEEDBACK_PATH = ROOT_DIR / "data" / "feedback_conseillers.csv"
+BASELINE_METRICS_PATH = ROOT_DIR / "models" / "train_metrics_baseline.json"
+FEEDBACK_COLUMNS = [
+    "age", "niveau_diplome", "anciennete_poste_ans", "code_rome_vise",
+    "code_insee_commune", "est_allocataire", "nationalite_hors_ue",
+    "synthese_entretien", "classe_predite", "classe_corrigee", "commentaire",
+]
+# Tolérance de dégradation du f1_macro avant de refuser la promotion d'un nouveau modèle
+DEGRADATION_TOLERANCE = 0.02
 
 CLASS_LABELS = {0: "bas", 1: "moyen", 2: "long"}
+REVERSE_CLASS_LABELS = {label: index for index, label in CLASS_LABELS.items()}
 MODEL_LOCK = Lock()
+FEEDBACK_LOCK = Lock()
 pipeline_lgbm = None
 model_load_error = None
 
@@ -186,6 +207,29 @@ def health() -> HealthResponse:
     return HealthResponse(status="ok" if loaded else "degraded", model_loaded=loaded)
 
 
+@app.post("/feedback", response_model=FeedbackResponse)
+def submit_feedback(feedback: FeedbackCorrection) -> FeedbackResponse:
+    """Enregistre la correction d'un conseiller pour le réentraînement monitoré.
+
+    Args:
+        feedback (FeedbackCorrection): Caractéristiques du dossier, classe prédite et classe corrigée.
+
+    Returns:
+        FeedbackResponse: Accusé de réception avec le total de corrections stockées.
+    """
+    row = pd.DataFrame([{column: getattr(feedback, column) for column in FEEDBACK_COLUMNS}])
+    with FEEDBACK_LOCK:
+        FEEDBACK_PATH.parent.mkdir(parents=True, exist_ok=True)
+        row.to_csv(FEEDBACK_PATH, mode="a", header=not FEEDBACK_PATH.exists(), index=False)
+        total_rows = len(pd.read_csv(FEEDBACK_PATH))
+    logger.info(
+        "Feedback conseiller enregistré: classe_predite={} classe_corrigee={}",
+        feedback.classe_predite,
+        feedback.classe_corrigee,
+    )
+    return FeedbackResponse(status="recorded", total_feedback_rows=total_rows)
+
+
 @app.post("/predict", response_model=PredictionResponse)
 def predict(request: Demandeur) -> PredictionResponse:
     """Point de terminaison pour effectuer une prédiction.
@@ -278,22 +322,69 @@ def build_training_pipeline() -> Pipeline:
     return Pipeline([("preparation", preprocessor), ("modele", model)])
 
 
-@app.post("/train", response_model=TrainResponse)
-def train() -> TrainResponse:
-    """Point de terminaison pour entraîner le modèle.
+def load_feedback_dataframe() -> pd.DataFrame:
+    """Charge les corrections des conseillers au format du dataset d'entraînement.
 
     Returns:
-        TrainResponse: Objet contenant le statut de l'entraînement, le chemin du modèle sauvegardé et le nombre de lignes utilisées pour l'entraînement.
+        pd.DataFrame: Lignes de feedback prêtes à être fusionnées, vide si aucun feedback.
+    """
+    if not FEEDBACK_PATH.exists():
+        return pd.DataFrame()
+    feedback = pd.read_csv(FEEDBACK_PATH)
+    if feedback.empty:
+        return feedback
+    feedback = feedback.rename(columns={"classe_corrigee": "classe_retour_emploi"})
+    feedback["classe_retour_emploi"] = feedback["classe_retour_emploi"].map(REVERSE_CLASS_LABELS)
+    feedback["usager_id"] = [f"FEEDBACK_{index}" for index in feedback.index]
+    training_columns = [
+        "usager_id", "age", "niveau_diplome", "anciennete_poste_ans", "code_rome_vise",
+        "code_insee_commune", "est_allocataire", "nationalite_hors_ue",
+        "synthese_entretien", "classe_retour_emploi",
+    ]
+    return feedback[training_columns]
+
+
+def load_baseline_f1() -> float | None:
+    """Lit le f1_macro du modèle actuellement en production, s'il a été mesuré.
+
+    Returns:
+        float | None: f1_macro de référence, ou None si aucune baseline n'existe encore.
+    """
+    if not BASELINE_METRICS_PATH.exists():
+        return None
+    try:
+        return json.loads(BASELINE_METRICS_PATH.read_text())["f1_macro"]
+    except (OSError, ValueError, KeyError):
+        return None
+
+
+@app.post("/train", response_model=TrainResponse)
+def train() -> TrainResponse:
+    """Point de terminaison pour réentraîner le modèle, feedback conseillers inclus.
+
+    Le nouveau modèle n'est promu en production que si ses métriques de
+    validation ne se dégradent pas significativement par rapport à la
+    baseline en place (garde-fou anti-régression).
+
+    Returns:
+        TrainResponse: Statut, chemin du modèle, lignes utilisées, métriques et décision de promotion.
     """
     global pipeline_lgbm
-    logger.info("Début de l'entraînement")
+    logger.info("Début de l'entraînement monitoré")
     if not DATA_PATH.exists():
         logger.error("Jeu de données introuvable: {}", DATA_PATH)
         raise HTTPException(status_code=404, detail="Jeu de données introuvable")
 
     try:
         data = pd.read_csv(DATA_PATH)
-        logger.info("Jeu de données chargé: {} lignes, {} colonnes", len(data), len(data.columns))
+        feedback_data = load_feedback_dataframe()
+        if not feedback_data.empty:
+            data = pd.concat([data, feedback_data], ignore_index=True)
+        logger.info(
+            "Jeu de données chargé: {} lignes ({} issues du feedback conseillers)",
+            len(data),
+            len(feedback_data),
+        )
         target = "classe_retour_emploi"
         if target not in data.columns:
             raise ValueError(f"Colonne cible absente : {target}")
@@ -305,18 +396,44 @@ def train() -> TrainResponse:
             inconsistent = (features["age"] - features["anciennete_poste_ans"]) <= 15
             features.loc[inconsistent, "anciennete_poste_ans"] = pd.NA
 
-        new_pipeline = build_training_pipeline()
-        with MODEL_LOCK:
-            new_pipeline.fit(features, data[target])
-            joblib.dump(new_pipeline, MODEL_PATH)
-            pipeline_lgbm = new_pipeline
-        logger.info("Entraînement terminé: {} lignes, modèle sauvegardé", len(features))
+        X_train, X_val, y_train, y_val = train_test_split(
+            features, data[target], test_size=0.2, random_state=42, stratify=data[target],
+        )
+        validation_pipeline = build_training_pipeline()
+        validation_pipeline.fit(X_train, y_train)
+        predictions = validation_pipeline.predict(X_val)
+        metrics = {
+            "accuracy": float(accuracy_score(y_val, predictions)),
+            "f1_macro": float(f1_score(y_val, predictions, average="macro")),
+        }
+        baseline_f1 = load_baseline_f1()
+        promoted = baseline_f1 is None or metrics["f1_macro"] >= baseline_f1 - DEGRADATION_TOLERANCE
+        logger.info("Métriques de validation: {} (baseline f1_macro={})", metrics, baseline_f1)
+
+        if promoted:
+            final_pipeline = build_training_pipeline()
+            final_pipeline.fit(features, data[target])
+            with MODEL_LOCK:
+                joblib.dump(final_pipeline, MODEL_PATH)
+                pipeline_lgbm = final_pipeline
+            BASELINE_METRICS_PATH.write_text(json.dumps(metrics))
+            logger.info("Nouveau modèle promu: {} lignes, modèle sauvegardé", len(features))
+        else:
+            logger.warning(
+                "Modèle rejeté : f1_macro {} sous le seuil (baseline {} - tolérance {})",
+                metrics["f1_macro"],
+                baseline_f1,
+                DEGRADATION_TOLERANCE,
+            )
     except (OSError, ValueError, KeyError) as error:
         logger.exception("Échec de l'entraînement")
         raise HTTPException(status_code=422, detail=f"Entraînement impossible : {error}") from error
 
     return TrainResponse(
-        status="trained",
+        status="trained" if promoted else "rejected",
         model_path=str(MODEL_PATH),
         training_rows=len(features),
+        feedback_rows_used=len(feedback_data),
+        metrics=metrics,
+        promoted=promoted,
     )

@@ -102,3 +102,57 @@ def test_request_id_is_preserved(client, valid_payload):
 
     assert response.status_code == 200
     assert response.headers["X-Request-ID"] == request_id
+
+
+@pytest.fixture
+def feedback_payload():
+    """Payload accepté par le schéma FeedbackCorrection."""
+    return {
+        "age": 35,
+        "niveau_diplome": "Bac+2",
+        "anciennete_poste_ans": 10,
+        "code_rome_vise": "A1101",
+        "code_insee_commune": "75056",
+        "est_allocataire": "1",
+        "nationalite_hors_ue": "0",
+        "synthese_entretien": "Expérience en gestion de projet.",
+        "classe_predite": "moyen",
+        "classe_corrigee": "long",
+        "commentaire": "Reclassé après entretien approfondi",
+    }
+
+
+@pytest.fixture
+def isolated_feedback_path(tmp_path, monkeypatch):
+    """Redirige FEEDBACK_PATH vers un fichier temporaire pour ne pas polluer les données réelles."""
+    path = tmp_path / "feedback_conseillers.csv"
+    monkeypatch.setattr(main, "FEEDBACK_PATH", path)
+    return path
+
+
+def test_feedback_records_correction_and_counts_rows(client, feedback_payload, isolated_feedback_path):
+    """Vérifie que le feedback est correctement enregistré et que le nombre de lignes est compté."""
+    response = client.post("/feedback", json=feedback_payload)
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "recorded", "total_feedback_rows": 1}
+    assert isolated_feedback_path.exists()
+
+
+def test_feedback_appends_multiple_rows(client, feedback_payload, isolated_feedback_path):
+    """Vérifie que plusieurs feedbacks sont correctement ajoutés et comptés."""
+    client.post("/feedback", json=feedback_payload)
+    response = client.post("/feedback", json=feedback_payload)
+
+    assert response.status_code == 200
+    assert response.json()["total_feedback_rows"] == 2
+
+
+def test_feedback_rejects_unknown_fields(client, feedback_payload, isolated_feedback_path):
+    """Vérifie que le feedback avec des champs inconnus est rejeté."""
+    feedback_payload["champ_inconnu"] = "interdit"
+
+    response = client.post("/feedback", json=feedback_payload)
+
+    assert response.status_code == 422
+    assert response.json()["detail"][0]["type"] == "extra_forbidden"

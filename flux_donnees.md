@@ -22,9 +22,19 @@ flowchart LR
     Pipeline --> Prediction[Classe prédite<br/>+ probabilités]
     Prediction --> Response200[Réponse 200]
 
+    Route -->|POST /feedback| FeedbackValidation[Validation Pydantic]
+    FeedbackValidation -->|Payload invalide| FeedbackError422[Réponse 422]
+    FeedbackValidation -->|Payload valide| FeedbackAppend[Ajout de la ligne au CSV]
+    FeedbackAppend --> FeedbackCSV[(data/feedback_conseillers.csv)]
+    FeedbackAppend --> FeedbackOK[Réponse 200 : total_feedback_rows]
+
     Route -->|POST /train| Dataset[Lecture du fichier CSV]
-    Dataset --> Training[Réentraînement du pipeline]
-    Training --> Save[Sauvegarde du modèle]
+    FeedbackCSV -.->|Fusion des corrections| Dataset
+    Dataset --> Training[Entraînement de validation]
+    Training --> Compare{f1_macro >= baseline - tolérance ?}
+    Compare -->|Non| TrainRejected[Réponse 200 : modèle rejeté]
+    Compare -->|Oui| Retrain[Réentraînement sur tout le jeu]
+    Retrain --> Save[Sauvegarde du modèle + baseline]
     Save --> TrainOK[Réponse 200 : modèle entraîné]
 
     API -.-> Logs[(logs/api.log)]
@@ -35,18 +45,18 @@ flowchart LR
     classDef process fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#1e3a8a
     classDef decision fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#92400e
 
-    class HealthOK,Response200,TrainOK ok
-    class Error422,Error503 error
-    class API,Preparation,Features,Pipeline,Prediction,Dataset,Training,Save process
-    class Route,HealthModel,ModelCheck decision
+    class HealthOK,Response200,TrainOK,FeedbackOK ok
+    class Error422,Error503,FeedbackError422,TrainRejected error
+    class API,Preparation,Features,Pipeline,Prediction,Dataset,Training,Retrain,Save,FeedbackValidation,FeedbackAppend process
+    class Route,HealthModel,ModelCheck,Compare decision
 ```
 
 ## Légende
 
-Le client HTTP envoie une requête à l'API FastAPI, qui la dirige vers la route demandée. Pour `/predict`, le payload est validé, puis le modèle LightGBM produit une classe et les probabilités associées. Les erreurs de validation renvoient `422`, tandis qu'un modèle indisponible renvoie `503`. La route `/health` contrôle l'état du modèle et `/train` permet de réentraîner puis de sauvegarder le pipeline. Les requêtes, statuts et durées sont tracés dans `logs/api.log`.
+Le client HTTP envoie une requête à l'API FastAPI, qui la dirige vers la route demandée. Pour `/predict`, le payload est validé, puis le modèle LightGBM produit une classe et les probabilités associées. Les erreurs de validation renvoient `422`, tandis qu'un modèle indisponible renvoie `503`. La route `/health` contrôle l'état du modèle. La route `/feedback` valide la correction d'un conseiller et l'ajoute à `data/feedback_conseillers.csv`. La route `/train` fusionne ce fichier de corrections avec le dataset d'entraînement, valide les métriques par rapport à une baseline (garde-fou anti-régression avec tolérance de dégradation) avant de promouvoir ou rejeter le nouveau modèle. Les requêtes, statuts et durées sont tracés dans `logs/api.log`.
 
-- 🟢 **Vert** : réponses nominales `200` (`/health`, `/predict` et `/train`).
-- 🔴 **Rouge** : erreurs fonctionnelles ou techniques (`422` et `503`).
+- 🟢 **Vert** : réponses nominales `200` (`/health`, `/predict`, `/feedback` et `/train`).
+- 🔴 **Rouge** : erreurs fonctionnelles ou techniques (`422`, `503` et rejet de promotion).
 - 🔵 **Bleu** : étapes de traitement de l'API et du pipeline de données.
 - 🟡 **Jaune** : routes ou contrôles conditionnels qui orientent le flux.
 

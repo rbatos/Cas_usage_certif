@@ -88,9 +88,31 @@ class HealthResponse(BaseModel):
     model_loaded: bool = Field(description="Vrai si le modèle est chargé en mémoire.")
 
 
-class TrainResponse(BaseModel):
-    """Résultat d'un entraînement explicite du modèle."""
+class FeedbackCorrection(Demandeur):
+    """Correction d'un conseiller sur une prédiction du modèle, réinjectée au réentraînement."""
 
-    status: Literal["trained"] = Field(description="Statut de l'entraînement.")
+    classe_predite: RetourEmploi = Field(description="Classe initialement prédite par le modèle.")
+    classe_corrigee: RetourEmploi = Field(description="Classe corrigée par le conseiller.")
+    commentaire: str | None = Field(
+        None, max_length=500, description="Commentaire libre du conseiller.",
+    )
+
+
+class FeedbackResponse(BaseModel):
+    """Accusé de réception d'une correction conseiller."""
+
+    status: Literal["recorded"] = Field(description="Statut de l'enregistrement.")
+    total_feedback_rows: int = Field(description="Nombre total de corrections enregistrées à ce jour.")
+
+
+class TrainResponse(BaseModel):
+    """Résultat d'un réentraînement monitoré du modèle."""
+
+    status: Literal["trained", "rejected"] = Field(
+        description="'trained' si le nouveau modèle a été promu, 'rejected' s'il a été refusé après validation.",
+    )
     model_path: str = Field(description="Chemin du modèle sauvegardé.")
-    training_rows: int = Field(description="Nombre de lignes utilisées pour l'entraînement.")
+    training_rows: int = Field(description="Nombre de lignes utilisées pour l'entraînement (dataset + feedback).")
+    feedback_rows_used: int = Field(description="Nombre de corrections conseillers intégrées.")
+    metrics: dict[str, float] = Field(description="Métriques de validation (accuracy, f1_macro).")
+    promoted: bool = Field(description="Vrai si le nouveau modèle a remplacé le modèle en production.")
