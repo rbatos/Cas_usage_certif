@@ -1,5 +1,8 @@
 """Tests des routes FastAPI."""
 
+import json
+
+import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
@@ -156,3 +159,119 @@ def test_feedback_rejects_unknown_fields(client, feedback_payload, isolated_feed
 
     assert response.status_code == 422
     assert response.json()["detail"][0]["type"] == "extra_forbidden"
+
+
+@pytest.fixture
+def isolated_history_path(tmp_path, monkeypatch):
+    """Redirige HISTORY_PATH vers un fichier temporaire pour ne pas polluer les données réelles."""
+    path = tmp_path / "historique_inferences.csv"
+    monkeypatch.setattr(main, "HISTORY_PATH", path)
+    return path
+
+
+def test_history_returns_empty_list_when_no_file(client, isolated_history_path):
+    """Vérifie que l'historique renvoie une liste vide si aucune prédiction n'a encore été faite."""
+    response = client.get("/history")
+
+    assert response.status_code == 200
+    assert response.json() == {"entries": []}
+
+
+def test_history_records_entry_after_predict(client, valid_payload, isolated_history_path):
+    """Vérifie qu'une prédiction est bien journalisée et retrouvable via /history."""
+    client.post("/predict", json=valid_payload)
+
+    response = client.get("/history")
+
+    assert response.status_code == 200
+    entries = response.json()["entries"]
+    assert len(entries) == 1
+    assert entries[0]["retour_emploi"] == "moyen"
+    assert entries[0]["conseiller_id"] == "inconnu"
+    assert entries[0]["departement"] == "75"
+
+
+def test_history_filters_by_conseiller_id(client, valid_payload, isolated_history_path):
+    """Vérifie que le filtre conseiller_id ne renvoie que les prédictions de ce conseiller."""
+    client.post("/predict", json=valid_payload, headers={"X-Conseiller-ID": "romain"})
+    client.post("/predict", json=valid_payload, headers={"X-Conseiller-ID": "julien"})
+
+    response = client.get("/history", params={"conseiller_id": "romain"})
+
+    entries = response.json()["entries"]
+    assert len(entries) == 1
+    assert entries[0]["conseiller_id"] == "romain"
+
+
+def test_history_respects_limit(client, valid_payload, isolated_history_path):
+    """Vérifie que le paramètre limit borne le nombre de lignes retournées."""
+    for _ in range(3):
+        client.post("/predict", json=valid_payload)
+
+    response = client.get("/history", params={"limit": 2})
+
+    assert len(response.json()["entries"]) == 2
+
+
+@pytest.fixture
+def synthetic_dataset() -> pd.DataFrame:
+    """Mini dataset d'entraînement synthétique, équilibré sur les 3 classes."""
+    diplomes = ["Sans diplôme", "Bac", "Bac+2", "Bac+5"]
+    rows = [{
+        "usager_id": f"ID_{index:04d}",
+        "age": 20 + (index % 30),
+        "niveau_diplome": diplomes[index % 4],
+        "anciennete_poste_ans": 1 + (index % 10),
+        "code_rome_vise": "A1101",
+        "code_insee_commune": "75056",
+        "est_allocataire": index % 2,
+        "nationalite_hors_ue": index % 2,
+        "synthese_entretien": "Recherche active de travail avec mobilité géographique",
+        "classe_retour_emploi": index % 3,
+    } for index in range(30)]
+    return pd.DataFrame(rows)
+
+
+@pytest.fixture
+def isolated_train_paths(tmp_path, monkeypatch, synthetic_dataset):
+    """Redirige DATA_PATH, MODEL_PATH, BASELINE_METRICS_PATH et FEEDBACK_PATH vers tmp_path."""
+    data_path = tmp_path / "dataset.csv"
+    synthetic_dataset.to_csv(data_path, index=False)
+    monkeypatch.setattr(main, "DATA_PATH", data_path)
+    monkeypatch.setattr(main, "MODEL_PATH", tmp_path / "model.joblib")
+    monkeypatch.setattr(main, "BASELINE_METRICS_PATH", tmp_path / "baseline.json")
+    monkeypatch.setattr(main, "FEEDBACK_PATH", tmp_path / "feedback_conseillers.csv")
+
+
+def test_train_returns_404_when_dataset_missing(client, tmp_path, monkeypatch):
+    """Vérifie que /train échoue proprement si le dataset local est introuvable."""
+    monkeypatch.setattr(main, "DATA_PATH", tmp_path / "absent.csv")
+
+    response = client.post("/train")
+
+    assert response.status_code == 404
+
+
+def test_train_promotes_model_when_no_baseline(client, isolated_train_paths):
+    """Sans baseline existante, le nouveau modèle est promu et sauvegardé."""
+    response = client.post("/train")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "trained"
+    assert data["promoted"] is True
+    assert main.MODEL_PATH.exists()
+    assert main.BASELINE_METRICS_PATH.exists()
+
+
+def test_train_rejects_when_below_baseline(client, isolated_train_paths):
+    """Un nouveau modèle sous le seuil de tolérance par rapport à la baseline est rejeté."""
+    main.BASELINE_METRICS_PATH.write_text(json.dumps({"f1_macro": 0.99}))
+
+    response = client.post("/train")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "rejected"
+    assert data["promoted"] is False
+    assert not main.MODEL_PATH.exists()
