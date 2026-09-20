@@ -52,6 +52,14 @@ st.caption(
     "de retour à l'emploi (bas / moyen / long) et consulter les probabilités."
 )
 
+with st.sidebar:
+    st.markdown("**Identifiant conseiller**")
+    conseiller_id = st.text_input(
+        "Identifiant conseiller", value="", placeholder="Ex : jdupont",
+        label_visibility="collapsed",
+        help="Utilisé pour retrouver ton historique de prédictions.",
+    )
+
 with st.form("formulaire_demandeur"):
     col1, col2 = st.columns(2)
     with col1:
@@ -101,7 +109,10 @@ if valide:
     }
     try:
         with st.spinner("Prédiction en cours…"):
-            response = httpx.post(f"{API_URL}/predict", json=payload, timeout=TIMEOUT_S)
+            headers = {"X-Conseiller-ID": conseiller_id} if conseiller_id else {}
+            response = httpx.post(
+                f"{API_URL}/predict", json=payload, headers=headers, timeout=TIMEOUT_S,
+            )
             response.raise_for_status()
             data = response.json()
     except httpx.ConnectError:
@@ -137,6 +148,33 @@ if valide:
             )
         )
         st.altair_chart(chart, use_container_width=True)
+
+st.divider()
+st.subheader("🕘 Historique des inférences")
+col_bouton, col_limite = st.columns([1, 1])
+with col_bouton:
+    voir_historique = st.button("Charger l'historique", type="secondary")
+with col_limite:
+    limite_historique = st.number_input(
+        "Nombre de lignes", min_value=5, max_value=200, value=50, step=5,
+    )
+
+if voir_historique:
+    try:
+        params = {"limit": int(limite_historique)}
+        if conseiller_id:
+            params["conseiller_id"] = conseiller_id
+        with st.spinner("Chargement de l'historique…"):
+            reponse_historique = httpx.get(f"{API_URL}/history", params=params, timeout=TIMEOUT_S)
+            reponse_historique.raise_for_status()
+            entries = reponse_historique.json().get("entries", [])
+    except httpx.HTTPError as exc:
+        st.error(f"Impossible de charger l'historique : {exc}")
+    else:
+        if not entries:
+            st.info("Aucune prédiction enregistrée pour le moment.")
+        else:
+            st.dataframe(pd.DataFrame(entries), use_container_width=True, hide_index=True)
 
 with httpx.Client(base_url=API_URL, timeout=2) as client:
     try:

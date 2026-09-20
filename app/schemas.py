@@ -116,3 +116,23 @@ class TrainResponse(BaseModel):
     feedback_rows_used: int = Field(description="Nombre de corrections conseillers intégrées.")
     metrics: dict[str, float] = Field(description="Métriques de validation (accuracy, f1_macro).")
     promoted: bool = Field(description="Vrai si le nouveau modèle a remplacé le modèle en production.")
+
+
+class HistoryEntry(BaseModel):
+    """Une ligne de l'historique persistant des inférences."""
+
+    horodatage: str = Field(description="Date et heure de la prédiction (ISO 8601).")
+    request_id: str = Field(description="Identifiant de corrélation de la requête.")
+    conseiller_id: str = Field(description="Identifiant du conseiller, 'inconnu' si non fourni.")
+    age: int
+    niveau_diplome: str | None = None
+    code_rome_vise: str
+    departement: str
+    retour_emploi: RetourEmploi
+    probabilite_max: float
+
+
+class HistoryResponse(BaseModel):
+    """Historique des inférences, du plus récent au plus ancien."""
+
+    entries: list[HistoryEntry] = Field(description="Prédictions passées, triées par date décroissante.")

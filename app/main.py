@@ -8,7 +8,8 @@ import json
 import joblib
 import sys
 import pandas as pd
-from fastapi import FastAPI, HTTPException
+from datetime import datetime, timezone
+from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.openapi.docs import get_redoc_html
 from lightgbm import LGBMClassifier
 from sklearn.compose import ColumnTransformer
@@ -25,6 +26,8 @@ from app.schemas import (
     FeedbackCorrection,
     FeedbackResponse,
     HealthResponse,
+    HistoryEntry,
+    HistoryResponse,
     PredictionResponse,
     TrainResponse,
 )
@@ -39,11 +42,16 @@ DATA_PATH = ROOT_DIR / "data" / (
     "- mai-oct2026 (Session-00279143).csv"
 )
 FEEDBACK_PATH = ROOT_DIR / "data" / "feedback_conseillers.csv"
+HISTORY_PATH = ROOT_DIR / "data" / "historique_inferences.csv"
 BASELINE_METRICS_PATH = ROOT_DIR / "models" / "train_metrics_baseline.json"
 FEEDBACK_COLUMNS = [
     "age", "niveau_diplome", "anciennete_poste_ans", "code_rome_vise",
     "code_insee_commune", "est_allocataire", "nationalite_hors_ue",
     "synthese_entretien", "classe_predite", "classe_corrigee", "commentaire",
+]
+HISTORY_COLUMNS = [
+    "horodatage", "request_id", "conseiller_id", "age", "niveau_diplome",
+    "code_rome_vise", "departement", "retour_emploi", "probabilite_max",
 ]
 # Tolérance de dégradation du f1_macro avant de refuser la promotion d'un nouveau modèle
 DEGRADATION_TOLERANCE = 0.02
@@ -52,6 +60,7 @@ CLASS_LABELS = {0: "bas", 1: "moyen", 2: "long"}
 REVERSE_CLASS_LABELS = {label: index for index, label in CLASS_LABELS.items()}
 MODEL_LOCK = Lock()
 FEEDBACK_LOCK = Lock()
+HISTORY_LOCK = Lock()
 pipeline_lgbm = None
 model_load_error = None
 
@@ -231,11 +240,17 @@ def submit_feedback(feedback: FeedbackCorrection) -> FeedbackResponse:
 
 
 @app.post("/predict", response_model=PredictionResponse)
-def predict(request: Demandeur) -> PredictionResponse:
+def predict(
+    request: Demandeur,
+    http_request: Request,
+    x_conseiller_id: str | None = Header(default=None, alias="X-Conseiller-ID"),
+) -> PredictionResponse:
     """Point de terminaison pour effectuer une prédiction.
 
     Args:
         request (Demandeur): Objet représentant la requête API.
+        http_request (Request): Requête HTTP brute, pour récupérer le request_id du middleware.
+        x_conseiller_id (str | None): Identifiant optionnel du conseiller, pour l'historique.
 
     Returns:
         PredictionResponse: Objet contenant la classe prédite et les probabilités par classe.
@@ -267,7 +282,68 @@ def predict(request: Demandeur) -> PredictionResponse:
         response.retour_emploi,
         response.probabilites,
     )
+    save_history_entry(request, response, x_conseiller_id, http_request.state.request_id)
     return response
+
+
+def save_history_entry(
+    request: Demandeur, response: PredictionResponse, conseiller_id: str | None, request_id: str,
+) -> None:
+    """Ajoute une ligne à l'historique persistant des inférences.
+
+    Échoue silencieusement (journalisé) plutôt que de faire échouer la prédiction :
+    l'historique est une fonctionnalité de confort, pas critique pour la réponse.
+    """
+    row = pd.DataFrame([{
+        "horodatage": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "request_id": request_id,
+        "conseiller_id": conseiller_id or "inconnu",
+        "age": request.age,
+        "niveau_diplome": request.niveau_diplome,
+        "code_rome_vise": request.code_rome_vise,
+        "departement": str(request.code_insee_commune)[:2],
+        "retour_emploi": response.retour_emploi,
+        "probabilite_max": round(max(response.probabilites.values()), 3),
+    }])
+    try:
+        with HISTORY_LOCK:
+            HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
+            row.to_csv(HISTORY_PATH, mode="a", header=not HISTORY_PATH.exists(), index=False)
+    except OSError:
+        logger.exception("Échec de l'écriture de l'historique des inférences")
+
+
+@app.get("/history", response_model=HistoryResponse)
+def get_history(conseiller_id: str | None = None, limit: int = 50) -> HistoryResponse:
+    """Retourne l'historique persistant des inférences, du plus récent au plus ancien.
+
+    Args:
+        conseiller_id (str | None): Si fourni, ne renvoie que les prédictions de ce conseiller.
+        limit (int): Nombre maximal de lignes retournées (défaut 50).
+
+    Returns:
+        HistoryResponse: Liste des prédictions passées correspondant aux filtres.
+    """
+    if not HISTORY_PATH.exists():
+        return HistoryResponse(entries=[])
+    with HISTORY_LOCK:
+        history = pd.read_csv(
+            HISTORY_PATH,
+            dtype={
+                "request_id": "string",
+                "conseiller_id": "string",
+                "niveau_diplome": "string",
+                "code_rome_vise": "string",
+                "departement": "string",
+                "retour_emploi": "string",
+            },
+        )
+    if conseiller_id:
+        history = history[history["conseiller_id"] == conseiller_id]
+    history = history.sort_values("horodatage", ascending=False).head(max(limit, 0))
+    history = history.where(pd.notna(history), None)
+    entries = [HistoryEntry(**row) for row in history.to_dict(orient="records")]
+    return HistoryResponse(entries=entries)
 
 
 def build_training_pipeline() -> Pipeline:
