@@ -7,6 +7,7 @@ probabilités associées, via l'API FastAPI du projet (`app/main.py`).
 L'URL de l'API est dans la variable d'environnement `API_URL`
 (par défaut `http://localhost:8000`, ou `http://api:8000` sous docker-compose).
 """
+
 from __future__ import annotations
 
 import os
@@ -46,6 +47,7 @@ def formater_erreur(detail) -> str:
         return "\n".join(lignes)
     return str(detail)
 
+
 st.title("🧭 Orientation retour à l'emploi — saisie conseiller")
 st.caption(
     "Renseigne les informations du demandeur d'emploi pour estimer son délai "
@@ -55,7 +57,9 @@ st.caption(
 with st.sidebar:
     st.markdown("**Identifiant conseiller**")
     conseiller_id = st.text_input(
-        "Identifiant conseiller", value="", placeholder="Ex : jdupont",
+        "Identifiant conseiller",
+        value="",
+        placeholder="Ex : jdupont",
         label_visibility="collapsed",
         help="Utilisé pour retrouver ton historique de prédictions.",
     )
@@ -66,31 +70,45 @@ with st.form("formulaire_demandeur"):
         age = st.number_input("Âge", min_value=18, max_value=63, value=30, step=1)
         anciennete_poste_ans = st.number_input(
             "Ancienneté au dernier poste (années)",
-            min_value=0.0, max_value=30.0, value=2.0, step=0.5,
+            min_value=0.0,
+            max_value=30.0,
+            value=2.0,
+            step=0.5,
         )
         niveau_diplome = st.selectbox(
-            "Niveau de diplôme", NIVEAUX_DIPLOME, index=1,
+            "Niveau de diplôme",
+            NIVEAUX_DIPLOME,
+            index=1,
         )
         code_rome_vise = st.text_input(
-            "Code ROME visé", value="", max_chars=5,
+            "Code ROME visé",
+            value="",
+            max_chars=5,
             placeholder="Ex : M1805",
         ).upper()
     with col2:
         code_insee_commune = st.text_input(
-            "Code INSEE commune", value="", max_chars=5,
+            "Code INSEE commune",
+            value="",
+            max_chars=5,
             placeholder="Ex : 75056",
         )
         est_allocataire = st.radio(
-            "Allocataire", ["0", "1"], horizontal=True,
+            "Allocataire",
+            ["0", "1"],
+            horizontal=True,
             format_func=lambda v: "Oui" if v == "1" else "Non",
         )
         nationalite_hors_ue = st.radio(
-            "Nationalité hors UE", ["0", "1"], horizontal=True,
+            "Nationalité hors UE",
+            ["0", "1"],
+            horizontal=True,
             format_func=lambda v: "Oui" if v == "1" else "Non",
         )
 
     synthese_entretien = st.text_area(
-        "Synthèse de l'entretien", height=150,
+        "Synthèse de l'entretien",
+        height=150,
         placeholder="Ex : Recherche active, mobile, formation en cours...",
     )
 
@@ -111,7 +129,10 @@ if valide:
         with st.spinner("Prédiction en cours…"):
             headers = {"X-Conseiller-ID": conseiller_id} if conseiller_id else {}
             response = httpx.post(
-                f"{API_URL}/predict", json=payload, headers=headers, timeout=TIMEOUT_S,
+                f"{API_URL}/predict",
+                json=payload,
+                headers=headers,
+                timeout=TIMEOUT_S,
             )
             response.raise_for_status()
             data = response.json()
@@ -156,7 +177,11 @@ with col_bouton:
     voir_historique = st.button("Charger l'historique", type="secondary")
 with col_limite:
     limite_historique = st.number_input(
-        "Nombre de lignes", min_value=5, max_value=200, value=50, step=5,
+        "Nombre de lignes",
+        min_value=5,
+        max_value=200,
+        value=50,
+        step=5,
     )
 
 if voir_historique:

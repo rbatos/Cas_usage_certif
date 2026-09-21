@@ -6,7 +6,6 @@ from pathlib import Path
 import mlflow
 from mlflow.tracking import MlflowClient
 
-
 ROOT_DIR = Path(__file__).resolve().parents[1]
 # Configuration MLflow par défaut et récupération des variables d'environnement.
 MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", (ROOT_DIR / "mlruns").as_uri())
@@ -52,20 +51,24 @@ def log_training_run(
         for key, value in model_parameters.items()
         if isinstance(value, (str, int, float, bool)) or value is None
     }
-    tracked_parameters.update({
-        "training_rows": training_rows,
-        "feedback_rows": feedback_rows,
-    })
+    tracked_parameters.update(
+        {
+            "training_rows": training_rows,
+            "feedback_rows": feedback_rows,
+        }
+    )
 
     with mlflow.start_run() as run:
         mlflow.log_params(tracked_parameters)
         mlflow.log_metrics(metrics)
         if baseline_f1 is not None:
             mlflow.log_metric("baseline_f1_macro", baseline_f1)
-        mlflow.set_tags({
-            "promotion_status": "promoted" if promoted else "rejected",
-            "model_alias": MLFLOW_MODEL_ALIAS,
-        })
+        mlflow.set_tags(
+            {
+                "promotion_status": "promoted" if promoted else "rejected",
+                "model_alias": MLFLOW_MODEL_ALIAS,
+            }
+        )
 
         model_version = None
         if promoted:

@@ -217,18 +217,21 @@ def test_history_respects_limit(client, valid_payload, isolated_history_path):
 def synthetic_dataset() -> pd.DataFrame:
     """Mini dataset d'entraînement synthétique, équilibré sur les 3 classes."""
     diplomes = ["Sans diplôme", "Bac", "Bac+2", "Bac+5"]
-    rows = [{
-        "usager_id": f"ID_{index:04d}",
-        "age": 20 + (index % 30),
-        "niveau_diplome": diplomes[index % 4],
-        "anciennete_poste_ans": 1 + (index % 10),
-        "code_rome_vise": "A1101",
-        "code_insee_commune": "75056",
-        "est_allocataire": index % 2,
-        "nationalite_hors_ue": index % 2,
-        "synthese_entretien": "Recherche active de travail avec mobilité géographique",
-        "classe_retour_emploi": index % 3,
-    } for index in range(30)]
+    rows = [
+        {
+            "usager_id": f"ID_{index:04d}",
+            "age": 20 + (index % 30),
+            "niveau_diplome": diplomes[index % 4],
+            "anciennete_poste_ans": 1 + (index % 10),
+            "code_rome_vise": "A1101",
+            "code_insee_commune": "75056",
+            "est_allocataire": index % 2,
+            "nationalite_hors_ue": index % 2,
+            "synthese_entretien": "Recherche active de travail avec mobilité géographique",
+            "classe_retour_emploi": index % 3,
+        }
+        for index in range(30)
+    ]
     return pd.DataFrame(rows)
 
 

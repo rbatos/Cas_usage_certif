@@ -1,17 +1,18 @@
 """API FastAPI pour la prédiction et l'entraînement du modèle emploi."""
 
+import json
+import sys
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock
 
-import json
 import joblib
-import sys
 import pandas as pd
-from datetime import datetime, timezone
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.openapi.docs import get_redoc_html
 from lightgbm import LGBMClassifier
+from loguru import logger
 from sklearn.compose import ColumnTransformer
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.impute import SimpleImputer
@@ -33,26 +34,39 @@ from app.schemas import (
     TrainResponse,
 )
 
-from loguru import logger
-
-
 ROOT_DIR = Path(__file__).resolve().parents[1]
 MODEL_PATH = ROOT_DIR / "models" / "modele_lgbm_v1.0_S1_multimodale_complete.joblib"
-DATA_PATH = ROOT_DIR / "data" / (
-    "dataset_trajectoire_emploi_Sujet Examen CISIA - Promo Upskilling Atlas "
-    "- mai-oct2026 (Session-00279143).csv"
+DATA_PATH = (
+    ROOT_DIR
+    / "data"
+    / ("dataset_trajectoire_emploi_Sujet Examen CISIA - Promo Upskilling Atlas " "- mai-oct2026 (Session-00279143).csv")
 )
 FEEDBACK_PATH = ROOT_DIR / "data" / "feedback_conseillers.csv"
 HISTORY_PATH = ROOT_DIR / "data" / "historique_inferences.csv"
 BASELINE_METRICS_PATH = ROOT_DIR / "models" / "train_metrics_baseline.json"
 FEEDBACK_COLUMNS = [
-    "age", "niveau_diplome", "anciennete_poste_ans", "code_rome_vise",
-    "code_insee_commune", "est_allocataire", "nationalite_hors_ue",
-    "synthese_entretien", "classe_predite", "classe_corrigee", "commentaire",
+    "age",
+    "niveau_diplome",
+    "anciennete_poste_ans",
+    "code_rome_vise",
+    "code_insee_commune",
+    "est_allocataire",
+    "nationalite_hors_ue",
+    "synthese_entretien",
+    "classe_predite",
+    "classe_corrigee",
+    "commentaire",
 ]
 HISTORY_COLUMNS = [
-    "horodatage", "request_id", "conseiller_id", "age", "niveau_diplome",
-    "code_rome_vise", "departement", "retour_emploi", "probabilite_max",
+    "horodatage",
+    "request_id",
+    "conseiller_id",
+    "age",
+    "niveau_diplome",
+    "code_rome_vise",
+    "departement",
+    "retour_emploi",
+    "probabilite_max",
 ]
 # Tolérance de dégradation du f1_macro avant de refuser la promotion d'un nouveau modèle
 DEGRADATION_TOLERANCE = 0.02
@@ -71,6 +85,8 @@ LOGS_DIR = Path(__file__).parent.parent / "logs"
 LOGS_DIR.mkdir(exist_ok=True)
 
 logger.remove()  # vire le handler par défaut
+
+
 def log_format(record):
     """Format compact qui supporte les messages contenant des dictionnaires."""
     request_id = record["extra"].get("request_id", "-")
@@ -84,13 +100,14 @@ logger.add(sys.stderr, level="INFO", colorize=True, format=log_format)
 # Configuration du log rotate
 logger.add(
     LOGS_DIR / "api.log",
-    rotation="10 MB",       # nouveau fichier à 10 Mo
-    retention="7 days",     # garde 7 jours d'historique
-    compression="gz",       # compresse les anciens fichiers
+    rotation="10 MB",  # nouveau fichier à 10 Mo
+    retention="7 days",  # garde 7 jours d'historique
+    compression="gz",  # compresse les anciens fichiers
     format=log_format,
-    enqueue=True,           # thread-safe
+    enqueue=True,  # thread-safe
     level="INFO",
 )
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -205,6 +222,7 @@ def request_to_features(request: Demandeur) -> pd.DataFrame:
             payload[column] = int(payload[column])
     return pd.DataFrame([payload])
 
+
 @app.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
     """Point de terminaison pour vérifier l'état de santé de l'API.
@@ -273,10 +291,7 @@ def predict(
 
     response = PredictionResponse(
         retour_emploi=CLASS_LABELS[predicted_class],
-        probabilites={
-            CLASS_LABELS[index]: float(probability)
-            for index, probability in enumerate(probabilities)
-        },
+        probabilites={CLASS_LABELS[index]: float(probability) for index, probability in enumerate(probabilities)},
     )
     logger.info(
         "Prédiction retournée: retour_emploi={} probabilites={}",
@@ -288,24 +303,31 @@ def predict(
 
 
 def save_history_entry(
-    request: Demandeur, response: PredictionResponse, conseiller_id: str | None, request_id: str,
+    request: Demandeur,
+    response: PredictionResponse,
+    conseiller_id: str | None,
+    request_id: str,
 ) -> None:
     """Ajoute une ligne à l'historique persistant des inférences.
 
     Échoue silencieusement (journalisé) plutôt que de faire échouer la prédiction :
     l'historique est une fonctionnalité de confort, pas critique pour la réponse.
     """
-    row = pd.DataFrame([{
-        "horodatage": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "request_id": request_id,
-        "conseiller_id": conseiller_id or "inconnu",
-        "age": request.age,
-        "niveau_diplome": request.niveau_diplome,
-        "code_rome_vise": request.code_rome_vise,
-        "departement": str(request.code_insee_commune)[:2],
-        "retour_emploi": response.retour_emploi,
-        "probabilite_max": round(max(response.probabilites.values()), 3),
-    }])
+    row = pd.DataFrame(
+        [
+            {
+                "horodatage": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                "request_id": request_id,
+                "conseiller_id": conseiller_id or "inconnu",
+                "age": request.age,
+                "niveau_diplome": request.niveau_diplome,
+                "code_rome_vise": request.code_rome_vise,
+                "departement": str(request.code_insee_commune)[:2],
+                "retour_emploi": response.retour_emploi,
+                "probabilite_max": round(max(response.probabilites.values()), 3),
+            }
+        ]
+    )
     try:
         with HISTORY_LOCK:
             HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -364,29 +386,39 @@ def build_training_pipeline() -> Pipeline:
     text_columns = ["synthese_entretien"]
     diploma_order = ["Sans diplôme", "Bac", "Bac+2", "Bac+5"]
 
-    numeric_pipeline = Pipeline([
-        ("imputer", SimpleImputer(strategy="median")),
-        ("scaler", StandardScaler()),
-    ])
-    categorical_pipeline = Pipeline([
-        ("imputer", SimpleImputer(strategy="most_frequent")),
-        ("onehot", OneHotEncoder(handle_unknown="ignore", sparse_output=False)),
-    ])
-    ordinal_pipeline = Pipeline([
-        ("imputer", SimpleImputer(strategy="most_frequent")),
-        ("ordinal", OrdinalEncoder(categories=[diploma_order])),
-    ])
-    text_pipeline = Pipeline([
-        ("imputer", SimpleImputer(strategy="constant", fill_value="")),
-        ("to_1d", FunctionTransformer(flatten_text, validate=False)),
-        ("tfidf", TfidfVectorizer(min_df=2, ngram_range=(1, 2))),
-    ])
-    preprocessor = ColumnTransformer([
-        ("num", numeric_pipeline, numeric_columns),
-        ("cat", categorical_pipeline, categorical_columns),
-        ("ord", ordinal_pipeline, ordinal_columns),
-        ("txt", text_pipeline, text_columns),
-    ])
+    numeric_pipeline = Pipeline(
+        [
+            ("imputer", SimpleImputer(strategy="median")),
+            ("scaler", StandardScaler()),
+        ]
+    )
+    categorical_pipeline = Pipeline(
+        [
+            ("imputer", SimpleImputer(strategy="most_frequent")),
+            ("onehot", OneHotEncoder(handle_unknown="ignore", sparse_output=False)),
+        ]
+    )
+    ordinal_pipeline = Pipeline(
+        [
+            ("imputer", SimpleImputer(strategy="most_frequent")),
+            ("ordinal", OrdinalEncoder(categories=[diploma_order])),
+        ]
+    )
+    text_pipeline = Pipeline(
+        [
+            ("imputer", SimpleImputer(strategy="constant", fill_value="")),
+            ("to_1d", FunctionTransformer(flatten_text, validate=False)),
+            ("tfidf", TfidfVectorizer(min_df=2, ngram_range=(1, 2))),
+        ]
+    )
+    preprocessor = ColumnTransformer(
+        [
+            ("num", numeric_pipeline, numeric_columns),
+            ("cat", categorical_pipeline, categorical_columns),
+            ("ord", ordinal_pipeline, ordinal_columns),
+            ("txt", text_pipeline, text_columns),
+        ]
+    )
     model = LGBMClassifier(
         n_estimators=400,
         learning_rate=0.02,
@@ -414,9 +446,16 @@ def load_feedback_dataframe() -> pd.DataFrame:
     feedback["classe_retour_emploi"] = feedback["classe_retour_emploi"].map(REVERSE_CLASS_LABELS)
     feedback["usager_id"] = [f"FEEDBACK_{index}" for index in feedback.index]
     training_columns = [
-        "usager_id", "age", "niveau_diplome", "anciennete_poste_ans", "code_rome_vise",
-        "code_insee_commune", "est_allocataire", "nationalite_hors_ue",
-        "synthese_entretien", "classe_retour_emploi",
+        "usager_id",
+        "age",
+        "niveau_diplome",
+        "anciennete_poste_ans",
+        "code_rome_vise",
+        "code_insee_commune",
+        "est_allocataire",
+        "nationalite_hors_ue",
+        "synthese_entretien",
+        "classe_retour_emploi",
     ]
     return feedback[training_columns]
 
@@ -474,7 +513,11 @@ def train() -> TrainResponse:
             features.loc[inconsistent, "anciennete_poste_ans"] = pd.NA
 
         X_train, X_val, y_train, y_val = train_test_split(
-            features, data[target], test_size=0.2, random_state=42, stratify=data[target],
+            features,
+            data[target],
+            test_size=0.2,
+            random_state=42,
+            stratify=data[target],
         )
         validation_pipeline = build_training_pipeline()
         validation_pipeline.fit(X_train, y_train)

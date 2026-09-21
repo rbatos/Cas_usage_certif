@@ -6,8 +6,8 @@ Seul `niveau_diplome` est autorisée à être manquante
 """
 
 from typing import Literal
-from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 NiveauDiplome = Literal["Sans diplôme", "Bac", "Bac+2", "Bac+5"]
 IndicateurBinaire = Literal["0", "1"]
@@ -20,16 +20,13 @@ class Demandeur(BaseModel):
     Les bornes des champs reflètent les plages observées dans le dataset
     d'entraînement et servent de garde-fou contre les entrées aberrantes.
     """
+
     model_config = ConfigDict(
         extra="forbid",
         str_strip_whitespace=True,
     )
 
-    age: int = Field(
-        ge=18,
-        le=63,
-        description="Âge observé dans le dataset : 18 à 63 ans"
-    )
+    age: int = Field(ge=18, le=63, description="Âge observé dans le dataset : 18 à 63 ans")
     niveau_diplome: NiveauDiplome | None = Field(
         None,
         description="Valeurs possibles : Sans diplôme, Bac, Bac+2 ou Bac+5",
@@ -54,13 +51,17 @@ class Demandeur(BaseModel):
         description="Code INSEE observé sur 4 ou 5 caractères",
     )
     est_allocataire: IndicateurBinaire = Field(
-        ..., description="Valeurs possibles : 0 ou 1",
+        ...,
+        description="Valeurs possibles : 0 ou 1",
     )
     nationalite_hors_ue: IndicateurBinaire = Field(
-        ..., description="Valeurs possibles : 0 ou 1",
+        ...,
+        description="Valeurs possibles : 0 ou 1",
     )
     synthese_entretien: str = Field(
-        ..., min_length=1, description="Synthèse non vide de l'entretien",
+        ...,
+        min_length=1,
+        description="Synthèse non vide de l'entretien",
     )
 
     @model_validator(mode="after")
@@ -94,7 +95,9 @@ class FeedbackCorrection(Demandeur):
     classe_predite: RetourEmploi = Field(description="Classe initialement prédite par le modèle.")
     classe_corrigee: RetourEmploi = Field(description="Classe corrigée par le conseiller.")
     commentaire: str | None = Field(
-        None, max_length=500, description="Commentaire libre du conseiller.",
+        None,
+        max_length=500,
+        description="Commentaire libre du conseiller.",
     )
 
 

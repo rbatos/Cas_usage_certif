@@ -9,7 +9,22 @@ on:
   workflow_dispatch:
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install ruff
+        run: pip install ruff==0.8.4
+      - name: Lint (ruff check)
+        run: ruff check .
+      - name: Formatage (ruff format --check)
+        run: ruff format --check .
+
   test:
+    needs: lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,11 +35,26 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libgomp1
       - name: Install API deps + outils de test
         run: pip install -r app/requirements.txt pytest httpx
-      - name: Tests unitaires API
-        run: python -m pytest -v
+      - name: Tests unitaires API (hors entraînement)
+        run: python -m pytest -v -k "not train"
+
+  train-validation:
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install libgomp1 (requis par LightGBM)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libgomp1
+      - name: Install API deps + outils de test
+        run: pip install -r app/requirements.txt pytest httpx
+      - name: Validation du pipeline d'entraînement (route /train, promotion vs baseline)
+        run: python -m pytest -v -k "train"
 
   build-and-push:
-    needs: test
+    needs: [test, train-validation]
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
@@ -69,3 +99,22 @@ jobs:
 
       - name: Push ${{ matrix.image }} image
         run: docker push --all-tags "${IMAGE_NAME}"
+
+  deploy:
+    needs: build-and-push
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: self-hosted
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Connexion à GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Déploiement local (pull des images + redémarrage)
+        run: |
+          docker compose -f docker-compose.prod.yml pull
+          docker compose -f docker-compose.prod.yml up -d --remove-orphans
+          docker image prune -f

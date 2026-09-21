@@ -1,0 +1,43 @@
+services:
+  api:
+    image: ${API_IMAGE:-ghcr.io/rbatos/cas_usage_certif/api:latest}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./models:/code/models
+      - ./data:/code/data
+      - ./logs:/code/logs
+      - ./mlruns:/code/mlruns
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status==200 else 1)"]
+      interval: 10s
+      timeout: 3s
+      start_period: 20s
+      retries: 3
+    restart: unless-stopped
+
+  mlflow:
+    image: ${API_IMAGE:-ghcr.io/rbatos/cas_usage_certif/api:latest}
+    command:
+      [
+        "mlflow", "ui",
+        "--host", "0.0.0.0",
+        "--backend-store-uri", "file:///code/mlruns",
+        "--port", "5000"
+      ]
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./mlruns:/code/mlruns
+    restart: unless-stopped
+
+  ui:
+    image: ${UI_IMAGE:-ghcr.io/rbatos/cas_usage_certif/ui:latest}
+    ports:
+      - "8501:8501"
+    environment:
+      API_URL: "http://api:8000"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped

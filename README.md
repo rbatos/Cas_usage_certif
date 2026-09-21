@@ -47,10 +47,12 @@ Cas_usage_certif/
 ├── README.md
 ├── requirements.txt
 ├── Dockerfile                                => image API et MLflow (uvicorn + modèle)
-├── docker-compose.yml                        => orchestration api + ui + mlflow
+├── docker-compose.yml                        => orchestration locale api + ui + mlflow (build)
+├── docker-compose.prod.yml                   => orchestration cible (images GHCR, déploiement CI/CD)
+├── ruff.toml                                 => configuration du linter (job `lint`)
 ├── .github/
 │   └── workflows/
-│       └── ci.yml                            => CI/CD : tests, build & push images GHCR
+│       └── ci.yml                            => CI/CD : lint, tests, entraînement, build & push GHCR, déploiement
 ├── app
 │   ├── main.py
 │   ├── middleware.py
@@ -157,12 +159,34 @@ docker compose down
 
 ## ⚙️ CI/CD (GitHub Actions)
 
-Le workflow [`.github/workflows/ci.yml`](.github/workflows/ci.yml) automatise deux étapes :
+Le workflow [`.github/workflows/ci.yml`](.github/workflows/ci.yml) automatise l'ensemble du cycle de vie :
 
-1. **`test`** (à chaque push et pull request) : installe les dépendances de `app/requirements.txt` + `pytest`/`httpx`, puis exécute `pytest -v`. Un test qui échoue bloque tout le reste.
-2. **`build-and-push`** (uniquement sur push vers `main` ou tag `v*`, après succès de `test`) : construit les images `api` et `ui` en parallèle (matrice) et les publie sur GitHub Container Registry (GHCR), taguées avec le SHA du commit, `latest` et la branche/tag.
+1. **`lint`** (à chaque push et pull request) : vérifie le style et la qualité du code avec `ruff check` et `ruff format --check` (config dans [`ruff.toml`](ruff.toml)). Bloque la suite si le code n'est pas conforme.
+2. **`test`** (après `lint`) : installe `app/requirements.txt` + `pytest`/`httpx`, puis exécute les tests unitaires de l'API (hors entraînement).
+3. **`train-validation`** (après `lint`, en parallèle de `test`) : exécute spécifiquement les tests de la route `/train` (entraînement, promotion vs baseline `f1_macro`, tolérance de dégradation) pour garantir la reproductibilité du pipeline d'entraînement avant toute mise en production.
+4. **`build-and-push`** (uniquement sur push vers `main` ou tag `v*`, après succès de `test` et `train-validation`) : construit les images `api` et `ui` en parallèle (matrice) et les publie sur GitHub Container Registry (GHCR), taguées avec le SHA du commit, `latest` et la branche/tag.
+5. **`deploy`** (uniquement sur push vers `main`, après `build-and-push`) : s'exécute sur un **runner self-hosted** installé sur la machine cible, s'authentifie à GHCR puis redéploie la stack via [`docker-compose.prod.yml`](docker-compose.prod.yml) (`docker compose pull` + `up -d`), garantissant un déploiement reproductible et traçable (image identifiée par son SHA de commit).
 
 Déclencheurs : `push` sur `main`, tags `v*`, `pull_request` vers `main`, et déclenchement manuel (`workflow_dispatch`).
+
+### Déploiement local via runner self-hosted (WSL/PC)
+
+Le job `deploy` tourne sur un **runner self-hosted** (`runs-on: self-hosted`) installé directement sur la machine cible (ici : WSL), plutôt que via SSH depuis les runners cloud GitHub — ceux-ci ne peuvent pas atteindre une machine derrière une box/NAT sans tunnel.
+
+Installation du runner (dans WSL, une seule fois) :
+
+1. GitHub → dépôt → **Settings → Actions → Runners → New self-hosted runner**, choisir *Linux*.
+2. Suivre les commandes affichées (téléchargement de l'archive, `./config.sh --url ... --token ...`).
+3. Installer le runner comme service persistant pour qu'il tourne en arrière-plan :
+   ```bash
+   sudo ./svc.sh install
+   sudo ./svc.sh start
+   ```
+4. Vérifier qu'il apparaît **Idle** dans *Settings → Actions → Runners*.
+
+Le runner doit avoir Docker installé et l'utilisateur qui l'exécute doit appartenir au groupe `docker` (`sudo usermod -aG docker $USER`, puis relancer une session).
+
+Aucun secret `DEPLOY_*` n'est nécessaire avec cette approche : le job s'exécute directement sur la machine cible et n'a besoin que de `GITHUB_TOKEN` (fourni automatiquement) pour s'authentifier à GHCR.
 
 ---
 

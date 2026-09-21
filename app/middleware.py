@@ -8,7 +8,6 @@ from fastapi import Request, Response
 from loguru import logger
 from starlette.middleware.base import BaseHTTPMiddleware
 
-
 REQUEST_ID_HEADER = "X-Request-ID"
 
 
@@ -58,11 +57,7 @@ def response_detail(response: Response) -> object | None:
     detail = payload.get("detail") if isinstance(payload, dict) else None
     if isinstance(detail, list):
         return [
-            {
-                key: error[key]
-                for key in ("type", "loc", "msg")
-                if key in error
-            }
+            {key: error[key] for key in ("type", "loc", "msg") if key in error}
             for error in detail
             if isinstance(error, dict)
         ]
