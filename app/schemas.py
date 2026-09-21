@@ -116,6 +116,11 @@ class TrainResponse(BaseModel):
     feedback_rows_used: int = Field(description="Nombre de corrections conseillers intégrées.")
     metrics: dict[str, float] = Field(description="Métriques de validation (accuracy, f1_macro).")
     promoted: bool = Field(description="Vrai si le nouveau modèle a remplacé le modèle en production.")
+    mlflow_run_id: str | None = Field(default=None, description="Identifiant du run MLflow.")
+    model_version: str | None = Field(
+        default=None,
+        description="Version MLflow enregistrée et affectée à l'alias champion si le modèle est promu.",
+    )
 
 
 class HistoryEntry(BaseModel):

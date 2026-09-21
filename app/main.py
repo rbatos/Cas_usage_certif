@@ -21,6 +21,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import FunctionTransformer, OneHotEncoder, OrdinalEncoder, StandardScaler
 
 from app.middleware import RequestLoggingMiddleware
+from app.mlflow_tracking import log_training_run
 from app.schemas import (
     Demandeur,
     FeedbackCorrection,
@@ -486,9 +487,24 @@ def train() -> TrainResponse:
         promoted = baseline_f1 is None or metrics["f1_macro"] >= baseline_f1 - DEGRADATION_TOLERANCE
         logger.info("Métriques de validation: {} (baseline f1_macro={})", metrics, baseline_f1)
 
+        tracked_pipeline = validation_pipeline
+        model_version = None
+
         if promoted:
             final_pipeline = build_training_pipeline()
             final_pipeline.fit(features, data[target])
+            tracked_pipeline = final_pipeline
+
+        mlflow_run_id, model_version = log_training_run(
+            pipeline=tracked_pipeline,
+            metrics=metrics,
+            baseline_f1=baseline_f1,
+            promoted=promoted,
+            training_rows=len(features),
+            feedback_rows=len(feedback_data),
+        )
+
+        if promoted:
             with MODEL_LOCK:
                 joblib.dump(final_pipeline, MODEL_PATH)
                 pipeline_lgbm = final_pipeline
@@ -512,4 +528,6 @@ def train() -> TrainResponse:
         feedback_rows_used=len(feedback_data),
         metrics=metrics,
         promoted=promoted,
+        mlflow_run_id=mlflow_run_id,
+        model_version=model_version,
     )

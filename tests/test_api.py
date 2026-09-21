@@ -262,6 +262,8 @@ def test_train_promotes_model_when_no_baseline(client, isolated_train_paths):
     assert data["promoted"] is True
     assert main.MODEL_PATH.exists()
     assert main.BASELINE_METRICS_PATH.exists()
+    assert data["mlflow_run_id"]
+    assert data["model_version"]
 
 
 def test_train_rejects_when_below_baseline(client, isolated_train_paths):
@@ -275,3 +277,5 @@ def test_train_rejects_when_below_baseline(client, isolated_train_paths):
     assert data["status"] == "rejected"
     assert data["promoted"] is False
     assert not main.MODEL_PATH.exists()
+    assert data["mlflow_run_id"]
+    assert data["model_version"] is None

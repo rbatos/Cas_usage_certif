@@ -46,8 +46,8 @@ Cas_usage_certif/
 ├── pytest.ini
 ├── README.md
 ├── requirements.txt
-├── Dockerfile                                => image API (uvicorn + modèle)
-├── docker-compose.yml                        => orchestration api + ui
+├── Dockerfile                                => image API et MLflow (uvicorn + modèle)
+├── docker-compose.yml                        => orchestration api + ui + mlflow
 ├── .github/
 │   └── workflows/
 │       └── ci.yml                            => CI/CD : tests, build & push images GHCR
@@ -62,18 +62,19 @@ Cas_usage_certif/
 │   └── Sujet Examen CISIA.md
 ├── logs/
 │   └── api.log                              => logs middleware
-├── modele/
-│   ├── modele_final.joblib                  => modèle entraîné sauvegardé
-│   ├── metadonnees_modele.json              => version, métriques, features, mapping cible
-│   ├── registre_modeles_sauvegardes.csv     => liste des modèles sauvegardés
-└── notebooks/
+├── mlruns/                                   => tracking MLflow local partagé avec Docker
+├── models/
+│   ├── modele_lgbm_v1.0_S1_multimodale_complete.joblib
+│   ├── *_metadata.json                       => versions, métriques et hyperparamètres
+│   ├── registre_modeles_sauvegardes.csv      => registre local des artefacts
+├── notebooks/
 │   ├── journal-de-bord.ipynb
 │   └── matrice-notebook-romain.ipynb
 ├── services/
-│   └── ui-streamlit/                     => interface web conseiller (saisie features -> prédiction + probas)
-|      ├── app.py
-|      ├── Dockerfile
-|      └── requirements.txt
+│   └── ui-streamlit/                         => interface web conseiller
+│      ├── app.py                             => saisie features -> prédiction + probabilités
+│      ├── Dockerfile
+│      └── requirements.txt
 └── tests
     └── test_api.py
 ```
@@ -113,11 +114,29 @@ $env:API_URL="http://127.0.0.1:8000"
 .\.venv\Scripts\python.exe -m pytest -v
 ```
 
+6. Suivi des entraînements avec MLflow
+```powershell
+New-Item -ItemType Directory -Force mlruns
+\.venv\Scripts\python.exe -m mlflow ui --backend-store-uri .\mlruns --port 5000
+```
+=> Interface de suivi : `http://127.0.0.1:5000`
+
+Chaque appel à `/train` crée un run dans l’expérience `orientation-retour-emploi`.
+Les hyperparamètres LightGBM, les métriques de validation, la baseline, le nombre de
+lignes et le nombre de feedbacks sont enregistrés. Les entraînements rejetés sont
+conservés dans MLflow mais ne créent pas de version de modèle.
+
+Lorsqu’un modèle est accepté par le garde-fou `f1_macro`, il est enregistré dans le
+Model Registry sous `orientation-retour-emploi` et l’alias contrôlé `champion` est
+déplacé vers cette nouvelle version. Les paramètres peuvent être configurés avec
+`MLFLOW_TRACKING_URI`, `MLFLOW_EXPERIMENT_NAME`, `MLFLOW_MODEL_NAME` et
+`MLFLOW_MODEL_ALIAS`.
+
 ---
 
 ## 🐳 Exécution avec Docker
 
-L'API et l'UI Streamlit peuvent aussi tourner en conteneurs, orchestrés par `docker-compose.yml` :
+L'API, l'UI Streamlit et l'interface MLflow peuvent tourner en conteneurs, orchestrés par `docker-compose.yml` :
 
 ```powershell
 docker compose up --build
@@ -125,8 +144,9 @@ docker compose up --build
 
 - API : `http://localhost:8000` (docs sur `/docs`)
 - Interface conseiller : `http://localhost:8501`
+- Interface MLflow : `http://127.0.0.1:5000`
 
-Le service `api` monte `models/`, `data/` et `logs/` en volumes. Le lifespan de l'API charge le modèle au démarrage et applique une politique **fail-fast** : si l'artefact modèle est absent ou corrompu, le conteneur `api` s'arrête en erreur (`docker compose ps` affiche `unhealthy`/exit) plutôt que de répondre avec un modèle cassé. Le service `ui` attend que `api` soit `healthy` (`depends_on: condition: service_healthy`) avant de démarrer, et le joint via `API_URL=http://api:8000`.
+Le service `api` monte `models/`, `data/`, `logs/` et `mlruns/` en volumes. Le service `mlflow` réutilise l'image API et monte le même dossier `mlruns/` afin d'afficher les runs produits par l'API. Le lifespan de l'API charge le modèle au démarrage et applique une politique **fail-fast** : si l'artefact modèle est absent ou corrompu, le conteneur `api` s'arrête en erreur (`docker compose ps` affiche `unhealthy`/exit) plutôt que de répondre avec un modèle cassé. Le service `ui` attend que `api` soit `healthy` (`depends_on: condition: service_healthy`) avant de démarrer, et le joint via `API_URL=http://api:8000`.
 
 Pour arrêter et supprimer les conteneurs :
 ```powershell

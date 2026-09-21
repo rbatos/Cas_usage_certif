@@ -30,6 +30,9 @@ logs/*.log.*
 logs/*.gz
 !logs/.gitkeep
 
+# MLflow local tracking store
+mlruns/
+
 # OS
 .DS_Store
 Thumbs.db
