@@ -33,6 +33,9 @@ logs/*.gz
 # MLflow local tracking store
 mlruns/
 
+# Runner GitHub Actions self-hosted (binaire local + secrets d'enregistrement)
+actions-runner/
+
 # OS
 .DS_Store
 Thumbs.db
