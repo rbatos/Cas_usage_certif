@@ -31,6 +31,7 @@ st.set_page_config(
     layout="centered",
 )
 
+
 def formater_erreur(detail) -> str:
     """Transforme un detail d'erreur FastAPI (str ou liste Pydantic) en texte lisible."""
     if isinstance(detail, str):
@@ -271,10 +272,7 @@ if derniere_prediction is not None:
             st.error(f"Erreur HTTP : {exc}")
         else:
             st.session_state.feedback_enregistre = True
-            st.success(
-                "Correction enregistrée. "
-                f"Total : {resultat_feedback['total_feedback_rows']} correction(s)."
-            )
+            st.success("Correction enregistrée. " f"Total : {resultat_feedback['total_feedback_rows']} correction(s).")
 
 st.divider()
 st.subheader("🕘 Historique des inférences")
