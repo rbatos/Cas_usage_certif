@@ -34,7 +34,7 @@ jobs:
       - name: Install libgomp1 (requis par LightGBM)
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libgomp1
       - name: Install API deps + outils de test
-        run: pip install -r app/requirements.txt pytest httpx
+        run: pip install -r app/requirements.txt -r services/ui-streamlit/requirements.txt pytest httpx
       - name: Tests unitaires API (hors entraînement)
         run: python -m pytest -v -k "not train"
 
@@ -51,7 +51,7 @@ jobs:
       - name: Install API deps + outils de test
         run: pip install -r app/requirements.txt pytest httpx
       - name: Validation du pipeline d'entraînement (route /train, promotion vs baseline)
-        run: python -m pytest -v -k "train"
+        run: python -m pytest -v tests/test_api.py -k "train"
 
   build-and-push:
     needs: [test, train-validation]
