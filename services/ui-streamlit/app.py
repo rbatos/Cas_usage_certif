@@ -31,7 +31,6 @@ st.set_page_config(
     layout="centered",
 )
 
-
 def formater_erreur(detail) -> str:
     """Transforme un detail d'erreur FastAPI (str ou liste Pydantic) en texte lisible."""
     if isinstance(detail, str):
