@@ -12,6 +12,8 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
+      - name: Nettoyer les artefacts de données du runner
+        run: sudo rm -f -- "$GITHUB_WORKSPACE/data/feedback_conseillers.csv"
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
@@ -27,6 +29,8 @@ jobs:
     needs: lint
     runs-on: ubuntu-latest
     steps:
+      - name: Nettoyer les artefacts de données du runner
+        run: sudo rm -f -- "$GITHUB_WORKSPACE/data/feedback_conseillers.csv"
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
@@ -42,6 +46,8 @@ jobs:
     needs: lint
     runs-on: ubuntu-latest
     steps:
+      - name: Nettoyer les artefacts de données du runner
+        run: sudo rm -f -- "$GITHUB_WORKSPACE/data/feedback_conseillers.csv"
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
@@ -71,6 +77,8 @@ jobs:
             dockerfile: services/ui-streamlit/Dockerfile
 
     steps:
+      - name: Nettoyer les artefacts de données du runner
+        run: sudo rm -f -- "$GITHUB_WORKSPACE/data/feedback_conseillers.csv"
       - uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
