@@ -114,7 +114,11 @@ jobs:
     runs-on: self-hosted
     environment: production
     steps:
+      - name: Nettoyer les artefacts de données du runner
+        run: sudo rm -f -- "$GITHUB_WORKSPACE/data/feedback_conseillers.csv"
       - uses: actions/checkout@v4
+        with:
+          clean: false
       - name: Connexion à GHCR
         uses: docker/login-action@v3
         with:
