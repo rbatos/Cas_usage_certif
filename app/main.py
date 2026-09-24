@@ -175,6 +175,7 @@ def write_model_manifest(model_path: Path, version: str, metadata_path: Path, ml
     temporary_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     temporary_path.replace(MODEL_MANIFEST_PATH)
 
+
 # --- Loguru configuration ---------------------------------------------------
 # Configuration Loguru (au démarrage du module)
 LOGS_DIR = Path(__file__).parent.parent / "logs"
@@ -663,9 +664,7 @@ def train() -> TrainResponse:
         if promoted:
             promoted_version = next_model_version()
             promoted_path = MODEL_MANIFEST_PATH.parent / MODEL_FILENAME_TEMPLATE.format(version=promoted_version)
-            promoted_metadata_path = promoted_path.with_name(
-                MODEL_METADATA_TEMPLATE.format(version=promoted_version)
-            )
+            promoted_metadata_path = promoted_path.with_name(MODEL_METADATA_TEMPLATE.format(version=promoted_version))
             with MODEL_LOCK:
                 joblib.dump(final_pipeline, promoted_path)
                 write_promoted_model_metadata(

@@ -5,7 +5,6 @@ from pathlib import Path
 import httpx
 from streamlit.testing.v1 import AppTest
 
-
 APP_PATH = Path(__file__).parents[1] / "services" / "ui-streamlit" / "app.py"
 
 
