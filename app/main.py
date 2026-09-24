@@ -1,7 +1,7 @@
 """API FastAPI pour la prédiction et l'entraînement du modèle emploi."""
 
-import json
 import hashlib
+import json
 import re
 import sys
 from contextlib import asynccontextmanager
