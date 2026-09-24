@@ -1,6 +1,8 @@
 """API FastAPI pour la prédiction et l'entraînement du modèle emploi."""
 
 import json
+import hashlib
+import re
 import sys
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -8,6 +10,7 @@ from pathlib import Path
 from threading import Lock
 
 import joblib
+import numpy as np
 import pandas as pd
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.openapi.docs import get_redoc_html
@@ -36,6 +39,10 @@ from app.schemas import (
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 MODEL_PATH = ROOT_DIR / "models" / "modele_lgbm_v1.0_S1_multimodale_complete.joblib"
+MODEL_MANIFEST_PATH = ROOT_DIR / "models" / "model_manifest.json"
+MODEL_VERSION = "1.0"
+MODEL_FILENAME_TEMPLATE = "modele_lgbm_v{version}_S1_multimodale_complete.joblib"
+MODEL_METADATA_TEMPLATE = "modele_lgbm_v{version}_S1_multimodale_complete_metadata.json"
 DATA_PATH = (
     ROOT_DIR
     / "data"
@@ -79,6 +86,95 @@ HISTORY_LOCK = Lock()
 pipeline_lgbm = None
 model_load_error = None
 
+
+def read_model_manifest() -> dict | None:
+    """Retourne le manifeste du modèle actif, s'il existe et est valide."""
+    if not MODEL_MANIFEST_PATH.exists():
+        return None
+    try:
+        manifest = json.loads(MODEL_MANIFEST_PATH.read_text(encoding="utf-8"))
+        model_path = Path(manifest["model_path"])
+        if model_path.is_absolute() or ".." in model_path.parts:
+            raise ValueError("Le chemin du modèle actif doit rester relatif au dossier models")
+        if not manifest.get("model_version"):
+            raise ValueError("La version du modèle actif est absente")
+        return manifest
+    except (OSError, ValueError, KeyError, json.JSONDecodeError) as error:
+        raise ValueError(f"Manifeste du modèle invalide : {error}") from error
+
+
+def resolve_active_model() -> tuple[Path, str]:
+    """Résout le chemin et la version du modèle à charger."""
+    manifest = read_model_manifest()
+    if manifest is None:
+        return MODEL_PATH, MODEL_VERSION
+    return ROOT_DIR / "models" / manifest["model_path"], str(manifest["model_version"])
+
+
+def next_model_version() -> str:
+    """Calcule la prochaine version patch à partir du modèle actif et des artefacts présents."""
+    model_directory = MODEL_MANIFEST_PATH.parent
+    versions = []
+    manifest = read_model_manifest()
+    if manifest is not None:
+        versions.append(str(manifest["model_version"]))
+    versions.extend(
+        match.group(1)
+        for path in model_directory.glob("modele_lgbm_v*_S1_multimodale_complete.joblib")
+        if (match := re.match(r"modele_lgbm_v(\d+\.\d+)_S1_multimodale_complete\.joblib", path.name))
+    )
+    major, minor = max((tuple(map(int, version.split("."))) for version in versions), default=(1, 0))
+    return f"{major}.{minor + 1}"
+
+
+def write_promoted_model_metadata(
+    model_path: Path,
+    version: str,
+    metrics: dict[str, float],
+    training_rows: int,
+    pipeline: Pipeline,
+    feature_columns: list[str],
+) -> Path:
+    """Écrit les metadata de l'artefact effectivement promu."""
+    metadata_path = model_path.with_name(MODEL_METADATA_TEMPLATE.format(version=version))
+    try:
+        dataset_source = str(DATA_PATH.parent.relative_to(ROOT_DIR))
+    except ValueError:
+        dataset_source = str(DATA_PATH.parent)
+    metadata = {
+        "modele": "modele_lgbm",
+        "model_version": version,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "scenario": "S1_multimodale_complete",
+        "chemin": str(model_path.relative_to(MODEL_MANIFEST_PATH.parent)),
+        "python_version": sys.version.split()[0],
+        "numpy_version": np.__version__,
+        "pandas_version": pd.__version__,
+        "dataset": DATA_PATH.name,
+        "dataset_source": dataset_source,
+        "hyperparameters": pipeline.named_steps["modele"].get_params(),
+        "metrics": metrics,
+        "training_rows": training_rows,
+        "features_columns": feature_columns,
+        "target_column": "classe_retour_emploi",
+    }
+    metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+    return metadata_path
+
+
+def write_model_manifest(model_path: Path, version: str, metadata_path: Path, mlflow_version: str | None) -> None:
+    """Publie atomiquement la nouvelle référence du modèle actif."""
+    manifest = {
+        "model_version": version,
+        "model_path": str(model_path.relative_to(MODEL_MANIFEST_PATH.parent)),
+        "metadata_path": str(metadata_path.relative_to(MODEL_MANIFEST_PATH.parent)),
+        "sha256": hashlib.sha256(model_path.read_bytes()).hexdigest(),
+        "mlflow_model_version": mlflow_version,
+    }
+    temporary_path = MODEL_MANIFEST_PATH.with_suffix(".tmp")
+    temporary_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    temporary_path.replace(MODEL_MANIFEST_PATH)
+
 # --- Loguru configuration ---------------------------------------------------
 # Configuration Loguru (au démarrage du module)
 LOGS_DIR = Path(__file__).parent.parent / "logs"
@@ -117,7 +213,7 @@ async def lifespan(app: FastAPI):
     Uvicorn s'arrête et le conteneur sort en erreur (pas d'API zombie
     qui répondrait OK avec un modèle cassé ou absent).
     """
-    global pipeline_lgbm
+    global pipeline_lgbm, MODEL_PATH, MODEL_VERSION
     load_model()
     yield
     pipeline_lgbm = None
@@ -156,20 +252,33 @@ def flatten_text(values):
 
 
 def load_model() -> None:
-    """Charge le pipeline complet, prétraitement inclus.
+    """Charge le modèle actif en mémoire.
 
-    Politique fail-fast : toute erreur (fichier absent, import impossible,
-    mémoire insuffisante...) est journalisée puis relevée telle quelle,
-    pour que l'appelant (le lifespan au démarrage) laisse l'exception
-    remonter et stoppe l'API plutôt que de continuer avec un modèle cassé.
+    Cette fonction met à jour les variables globales `pipeline_lgbm`,
+    `MODEL_PATH` et `MODEL_VERSION`. En cas d'erreur, elle journalise
+    l'erreur et relance l'exception.
 
     Raises:
         FileNotFoundError: Si le fichier modèle est absent.
+        ValueError: Si le hash du modèle actif ne correspond pas au manifeste.
         OSError | EOFError | ImportError | AttributeError | ValueError | MemoryError:
             Si le désérialisation du modèle échoue.
     """
-    global model_load_error, pipeline_lgbm
-    logger.info("Chargement du modèle: {}", MODEL_PATH)
+    global model_load_error, pipeline_lgbm, MODEL_PATH, MODEL_VERSION
+    try:
+        manifest = read_model_manifest()
+        active_model_path, active_model_version = resolve_active_model()
+        if manifest is not None and manifest.get("sha256"):
+            actual_hash = hashlib.sha256(active_model_path.read_bytes()).hexdigest()
+            if actual_hash != manifest["sha256"]:
+                raise ValueError(f"Hash du modèle actif invalide : {active_model_path}")
+    except ValueError as error:
+        model_load_error = str(error)
+        logger.error(model_load_error)
+        raise
+    MODEL_PATH = active_model_path
+    MODEL_VERSION = active_model_version
+    logger.info("Chargement du modèle v{}: {}", MODEL_VERSION, MODEL_PATH)
     if not MODEL_PATH.exists():
         model_load_error = f"Fichier modèle absent : {MODEL_PATH}"
         logger.error("Modèle introuvable: {}", MODEL_PATH)
@@ -232,7 +341,11 @@ def health() -> HealthResponse:
     """
     loaded = ensure_model_loaded()
     logger.info("Contrôle de santé: model_loaded={}", loaded)
-    return HealthResponse(status="ok" if loaded else "degraded", model_loaded=loaded)
+    return HealthResponse(
+        status="ok" if loaded else "degraded",
+        model_loaded=loaded,
+        model_version=MODEL_VERSION,
+    )
 
 
 @app.post("/feedback", response_model=FeedbackResponse)
@@ -485,7 +598,7 @@ def train() -> TrainResponse:
     Returns:
         TrainResponse: Statut, chemin du modèle, lignes utilisées, métriques et décision de promotion.
     """
-    global pipeline_lgbm
+    global pipeline_lgbm, MODEL_PATH, MODEL_VERSION
     logger.info("Début de l'entraînement monitoré")
     if not DATA_PATH.exists():
         logger.error("Jeu de données introuvable: {}", DATA_PATH)
@@ -548,11 +661,31 @@ def train() -> TrainResponse:
         )
 
         if promoted:
+            promoted_version = next_model_version()
+            promoted_path = MODEL_MANIFEST_PATH.parent / MODEL_FILENAME_TEMPLATE.format(version=promoted_version)
+            promoted_metadata_path = promoted_path.with_name(
+                MODEL_METADATA_TEMPLATE.format(version=promoted_version)
+            )
             with MODEL_LOCK:
-                joblib.dump(final_pipeline, MODEL_PATH)
+                joblib.dump(final_pipeline, promoted_path)
+                write_promoted_model_metadata(
+                    promoted_path,
+                    promoted_version,
+                    metrics,
+                    len(features),
+                    final_pipeline,
+                    features.columns.tolist(),
+                )
+                write_model_manifest(promoted_path, promoted_version, promoted_metadata_path, model_version)
+                MODEL_PATH = promoted_path
+                MODEL_VERSION = promoted_version
                 pipeline_lgbm = final_pipeline
             BASELINE_METRICS_PATH.write_text(json.dumps(metrics))
-            logger.info("Nouveau modèle promu: {} lignes, modèle sauvegardé", len(features))
+            logger.info(
+                "Nouveau modèle promu: version {}, {} lignes, modèle sauvegardé",
+                promoted_version,
+                len(features),
+            )
         else:
             logger.warning(
                 "Modèle rejeté : f1_macro {} sous le seuil (baseline {} - tolérance {})",
@@ -573,4 +706,5 @@ def train() -> TrainResponse:
         promoted=promoted,
         mlflow_run_id=mlflow_run_id,
         model_version=model_version,
+        artifact_version=MODEL_VERSION if promoted else None,
     )

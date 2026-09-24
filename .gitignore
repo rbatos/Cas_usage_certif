@@ -33,6 +33,10 @@ logs/*.gz
 # MLflow local tracking store
 mlruns/
 
+# dossier TMP perso
+tmp/*
+!tmp/.gitkeep
+
 # Runner GitHub Actions self-hosted (binaire local + secrets d'enregistrement)
 actions-runner/
 

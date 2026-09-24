@@ -78,7 +78,8 @@ Cas_usage_certif/
 │      ├── Dockerfile
 │      └── requirements.txt
 └── tests
-    └── test_api.py
+    ├── test_api.py                           => tests des routes FastAPI
+    └── test_ui.py                            => tests de l'interface Streamlit
 ```
 
 ---
@@ -111,10 +112,21 @@ $env:API_URL="http://127.0.0.1:8000"
 ```
 => URL utilisable : `http://localhost:8502`
 
+L'interface conseiller permet de :
+
+- saisir un dossier et appeler `POST /predict` ;
+- enregistrer une correction conseiller via `POST /feedback` ;
+- consulter l'historique via `GET /history` ;
+- lancer manuellement le réentraînement avec le bouton **« Lancer le réentraînement »**, qui appelle `POST /train` sans payload.
+
+Le réentraînement utilise un timeout dédié de 120 secondes. L'UI affiche le statut (`trained` ou `rejected`), les métriques `accuracy` et `f1_macro`, le nombre de lignes utilisées, le nombre de feedbacks intégrés et la version promue lorsqu'elle existe. En production, l'accès à `/train` devra être authentifié et réservé aux profils habilités.
+
 5. Tests Pytest
 ```powershell
 .\.venv\Scripts\python.exe -m pytest -v
 ```
+
+Les tests couvrent les routes API dans `tests/test_api.py` et le comportement de l'interface Streamlit dans `tests/test_ui.py`, notamment l'envoi d'un feedback et le déclenchement de `/train` depuis le bouton UI.
 
 6. Suivi des entraînements avec MLflow
 ```powershell
@@ -127,6 +139,11 @@ Chaque appel à `/train` crée un run dans l’expérience `orientation-retour-e
 Les hyperparamètres LightGBM, les métriques de validation, la baseline, le nombre de
 lignes et le nombre de feedbacks sont enregistrés. Les entraînements rejetés sont
 conservés dans MLflow mais ne créent pas de version de modèle.
+
+Le bouton de réentraînement de l'interface conseiller déclenche ce même flux : les
+corrections enregistrées via `/feedback` sont fusionnées au dataset avant validation.
+Une promotion remplace le pipeline actif en mémoire et met à jour le manifeste ; un
+rejet laisse le modèle actif inchangé.
 
 Lorsqu’un modèle est accepté par le garde-fou `f1_macro`, il est enregistré dans le
 Model Registry sous `orientation-retour-emploi` et l’alias contrôlé `champion` est

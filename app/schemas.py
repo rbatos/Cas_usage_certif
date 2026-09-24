@@ -87,6 +87,7 @@ class HealthResponse(BaseModel):
 
     status: Literal["ok", "degraded"] = Field(description="Statut global du service.")
     model_loaded: bool = Field(description="Vrai si le modèle est chargé en mémoire.")
+    model_version: str = Field(description="Version du modèle chargé ou configuré.")
 
 
 class FeedbackCorrection(Demandeur):
@@ -123,6 +124,10 @@ class TrainResponse(BaseModel):
     model_version: str | None = Field(
         default=None,
         description="Version MLflow enregistrée et affectée à l'alias champion si le modèle est promu.",
+    )
+    artifact_version: str | None = Field(
+        default=None,
+        description="Version locale immuable de l'artefact servi, par exemple 1.1.",
     )
 
 

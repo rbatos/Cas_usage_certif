@@ -62,7 +62,7 @@ def test_health_returns_loaded_status(client):
     response = client.get("/health")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "model_loaded": True}
+    assert response.json() == {"status": "ok", "model_loaded": True, "model_version": "1.0"}
     assert response.headers["X-Request-ID"]
 
 
@@ -242,6 +242,15 @@ def isolated_train_paths(tmp_path, monkeypatch, synthetic_dataset):
     synthetic_dataset.to_csv(data_path, index=False)
     monkeypatch.setattr(main, "DATA_PATH", data_path)
     monkeypatch.setattr(main, "MODEL_PATH", tmp_path / "model.joblib")
+    monkeypatch.setattr(main, "MODEL_MANIFEST_PATH", tmp_path / "model_manifest.json")
+    (tmp_path / "model_manifest.json").write_text(
+        json.dumps(
+            {
+                "model_version": "1.0",
+                "model_path": "modele_lgbm_v1.0_S1_multimodale_complete.joblib",
+            }
+        )
+    )
     monkeypatch.setattr(main, "BASELINE_METRICS_PATH", tmp_path / "baseline.json")
     monkeypatch.setattr(main, "FEEDBACK_PATH", tmp_path / "feedback_conseillers.csv")
 
@@ -255,7 +264,7 @@ def test_train_returns_404_when_dataset_missing(client, tmp_path, monkeypatch):
     assert response.status_code == 404
 
 
-def test_train_promotes_model_when_no_baseline(client, isolated_train_paths):
+def test_train_promotes_model_when_no_baseline(client, isolated_train_paths, tmp_path):
     """Sans baseline existante, le nouveau modèle est promu et sauvegardé."""
     response = client.post("/train")
 
@@ -263,7 +272,10 @@ def test_train_promotes_model_when_no_baseline(client, isolated_train_paths):
     data = response.json()
     assert data["status"] == "trained"
     assert data["promoted"] is True
-    assert main.MODEL_PATH.exists()
+    assert data["model_path"].endswith("modele_lgbm_v1.1_S1_multimodale_complete.joblib")
+    assert data["artifact_version"] == "1.1"
+    assert (tmp_path / "modele_lgbm_v1.1_S1_multimodale_complete.joblib").exists()
+    assert (tmp_path / "model_manifest.json").exists()
     assert main.BASELINE_METRICS_PATH.exists()
     assert data["mlflow_run_id"]
     assert data["model_version"]
@@ -282,3 +294,4 @@ def test_train_rejects_when_below_baseline(client, isolated_train_paths):
     assert not main.MODEL_PATH.exists()
     assert data["mlflow_run_id"]
     assert data["model_version"] is None
+    assert data["artifact_version"] is None

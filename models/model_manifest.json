@@ -1,0 +1,7 @@
+{
+  "model_version": "1.2",
+  "model_path": "modele_lgbm_v1.2_S1_multimodale_complete.joblib",
+  "metadata_path": "modele_lgbm_v1.2_S1_multimodale_complete_metadata.json",
+  "sha256": "1ffd33264442a6ad1dccb5235454a515aa5c1dc9e85ff806870cff160f956986",
+  "mlflow_model_version": "27"
+}
