@@ -59,6 +59,7 @@ def valid_payload():
 
 
 def test_health_returns_loaded_status(client):
+    """Vérifie que l'endpoint /health retourne le statut correct."""
     response = client.get("/health")
 
     assert response.status_code == 200
@@ -67,6 +68,7 @@ def test_health_returns_loaded_status(client):
 
 
 def test_predict_returns_prediction_and_probabilities(client, valid_payload):
+    """Vérifie que l'endpoint /predict retourne la prédiction et les probabilités correctes."""
     response = client.post("/predict", json=valid_payload)
 
     assert response.status_code == 200
@@ -77,6 +79,7 @@ def test_predict_returns_prediction_and_probabilities(client, valid_payload):
 
 
 def test_predict_rejects_inconsistent_age_and_experience(client, valid_payload):
+    """Vérifie que l'endpoint /predict rejette les combinaisons âge/ancienneté incohérentes."""
     valid_payload["anciennete_poste_ans"] = 25
 
     response = client.post("/predict", json=valid_payload)
@@ -86,6 +89,7 @@ def test_predict_rejects_inconsistent_age_and_experience(client, valid_payload):
 
 
 def test_predict_rejects_unknown_fields(client, valid_payload):
+    """Vérifie que l'endpoint /predict rejette les champs inconnus."""
     valid_payload["champ_inconnu"] = "interdit"
 
     response = client.post("/predict", json=valid_payload)
@@ -95,6 +99,7 @@ def test_predict_rejects_unknown_fields(client, valid_payload):
 
 
 def test_request_id_is_preserved(client, valid_payload):
+    """Vérifie que l'ID de requête est préservé dans les en-têtes de réponse."""
     request_id = "test-request-123"
 
     response = client.post(
@@ -109,7 +114,7 @@ def test_request_id_is_preserved(client, valid_payload):
 
 @pytest.fixture
 def feedback_payload():
-    """Payload accepté par le schéma FeedbackCorrection."""
+    """Payload accepté par le schéma FeedbackCorrection pour tester l'endpoint /feedback."""
     return {
         "age": 35,
         "niveau_diplome": "Bac+2",
@@ -134,7 +139,7 @@ def isolated_feedback_path(tmp_path, monkeypatch):
 
 
 def test_feedback_records_correction_and_counts_rows(client, feedback_payload, isolated_feedback_path):
-    """Vérifie que le feedback est correctement enregistré et que le nombre de lignes est compté."""
+    """Vérifie que l'endpoint /feedback enregistre correctement le feedback et compte le nombre de lignes."""
     response = client.post("/feedback", json=feedback_payload)
 
     assert response.status_code == 200
@@ -143,7 +148,7 @@ def test_feedback_records_correction_and_counts_rows(client, feedback_payload, i
 
 
 def test_feedback_appends_multiple_rows(client, feedback_payload, isolated_feedback_path):
-    """Vérifie que plusieurs feedbacks sont correctement ajoutés et comptés."""
+    """Vérifie que l'endpoint /feedback ajoute correctement plusieurs lignes au fichier de feedback."""
     client.post("/feedback", json=feedback_payload)
     response = client.post("/feedback", json=feedback_payload)
 

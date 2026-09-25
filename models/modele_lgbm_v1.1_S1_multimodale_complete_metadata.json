@@ -1,0 +1,50 @@
+{
+  "modele": "modele_lgbm",
+  "model_version": "1.1",
+  "created_at": "2026-09-24T08:48:13.905579+00:00",
+  "scenario": "S1_multimodale_complete",
+  "chemin": "modele_lgbm_v1.1_S1_multimodale_complete.joblib",
+  "python_version": "3.11.16",
+  "numpy_version": "1.26.4",
+  "pandas_version": "2.2.2",
+  "dataset": "dataset_trajectoire_emploi_Sujet Examen CISIA - Promo Upskilling Atlas - mai-oct2026 (Session-00279143).csv",
+  "dataset_source": "data",
+  "hyperparameters": {
+    "boosting_type": "gbdt",
+    "class_weight": null,
+    "colsample_bytree": 0.7,
+    "importance_type": "split",
+    "learning_rate": 0.02,
+    "max_depth": -1,
+    "min_child_samples": 10,
+    "min_child_weight": 0.001,
+    "min_split_gain": 0.0,
+    "n_estimators": 400,
+    "n_jobs": null,
+    "num_leaves": 24,
+    "objective": null,
+    "random_state": 42,
+    "reg_alpha": 0.0,
+    "reg_lambda": 0.0,
+    "subsample": 1.0,
+    "subsample_for_bin": 200000,
+    "subsample_freq": 0,
+    "verbosity": -1
+  },
+  "metrics": {
+    "accuracy": 0.746,
+    "f1_macro": 0.7126833362938815
+  },
+  "training_rows": 2500,
+  "features_columns": [
+    "age",
+    "niveau_diplome",
+    "anciennete_poste_ans",
+    "code_rome_vise",
+    "est_allocataire",
+    "nationalite_hors_ue",
+    "synthese_entretien",
+    "departement"
+  ],
+  "target_column": "classe_retour_emploi"
+}

@@ -20,7 +20,7 @@ Créer un système d’IA pour prédire le délai de retour à l’emploi (3 cla
 ### Analyse Éthique et Réglementaire
 - [x] Conformité RGPD / CNIL
 - [x] Analyse biais / discrimination
-- [?] Responsabilité juridique
+- [x] Responsabilité juridique
 
 ### Industrialisation et Déploiement
 - [x] Architecture cible
@@ -29,8 +29,8 @@ Créer un système d’IA pour prédire le délai de retour à l’emploi (3 cla
 
 ### Réflexion sur les Erreurs Critiques et Optimisation
 - [x] Identification des erreurs critiques
-- [ ] Stratégies de réduction
-- [ ] Évaluation des améliorations
+- [x] Stratégies de réduction
+- [x] Évaluation des améliorations
 
 ### Rédaction du Rapport et Préparation de la Soutenance
 - [ ] Rédaction du rapport
@@ -53,13 +53,16 @@ Cas_usage_certif/
 ├── .github/
 │   └── workflows/
 │       └── ci.yml                            => CI/CD : lint, tests, entraînement, build & push GHCR, déploiement
-├── app
+├── app/
 │   ├── main.py
 │   ├── middleware.py
+│   ├── mlflow_tracking.py                 => suivi des entraînements et du Model Registry
 │   ├── requirements.txt                      => dépendances minimales de l'image API
 │   └── schemas.py
 ├── data/
-│   └── dataset_trajectoire_emploi_Sujet Examen CISIA - Promo U...     => .gitignore pour le moment... à réfléchir!
+│   ├── dataset_trajectoire_emploi_...csv    => dataset d'entraînement
+│   ├── feedback_conseillers.csv             => corrections enregistrées par les conseillers
+│   └── historique_inferences.csv            => historique des prédictions
 ├── docs/
 │   └── Sujet Examen CISIA.md
 ├── logs/
@@ -67,17 +70,22 @@ Cas_usage_certif/
 ├── mlruns/                                   => tracking MLflow local partagé avec Docker
 ├── models/
 │   ├── modele_lgbm_v1.0_S1_multimodale_complete.joblib
-│   ├── *_metadata.json                       => versions, métriques et hyperparamètres
-│   ├── registre_modeles_sauvegardes.csv      => registre local des artefacts
+│   ├── modele_lgbm_v1.1_S1_multimodale_complete.joblib
+│   ├── modele_lgbm_v1.2_S1_multimodale_complete.joblib
+│   ├── modele_*_metadata.json                => versions, métriques et hyperparamètres
+│   ├── model_manifest.json                    => modèle actif et hash SHA-256
+│   ├── train_metrics_baseline.json            => baseline du garde-fou anti-régression
+│   └── registre_modeles_sauvegardes.csv       => registre local des artefacts
 ├── notebooks/
 │   ├── journal-de-bord.ipynb
-│   └── matrice-notebook-romain.ipynb
+│   ├── matrice-notebook-romain.ipynb
+│   └── rendu_certif.ipynb                    => rendu final
 ├── services/
 │   └── ui-streamlit/                         => interface web conseiller
 │      ├── app.py                             => saisie features -> prédiction + probabilités
 │      ├── Dockerfile
 │      └── requirements.txt
-└── tests
+└── tests/
     ├── test_api.py                           => tests des routes FastAPI
     └── test_ui.py                            => tests de l'interface Streamlit
 ```
@@ -99,7 +107,7 @@ pip install -r requirements.txt
 jupyter notebook notebooks/matrice-notebook-romain.ipynb
 ```
 
-3. Test vi uvicorn :
+3. Tester l'API avec Uvicorn :
 ```powershell
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
 ```
@@ -110,7 +118,7 @@ jupyter notebook notebooks/matrice-notebook-romain.ipynb
 $env:API_URL="http://127.0.0.1:8000"
 .\.venv\Scripts\python.exe -m streamlit run services\ui-streamlit\app.py
 ```
-=> URL utilisable : `http://localhost:8502`
+=> URL utilisable : `http://localhost:8501`
 
 L'interface conseiller permet de :
 
@@ -227,5 +235,4 @@ Aucun secret `DEPLOY_*` n'est nécessaire avec cette approche : le job s'exécut
 ## 📌 Livrables attendus
 
 - Notebook d’analyse (`notebooks/matrice-notebook-romain.ipynb`)
-- Journal de bord (`notebooks/journal-de-bord.ipynb`)
 - Support de soutenance

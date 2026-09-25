@@ -35,6 +35,7 @@ class FakeHealthClient:
 
 
 def test_feedback_form_sends_last_prediction_and_displays_confirmation(monkeypatch):
+    """Vérifie que le formulaire de feedback envoie la dernière prédiction et affiche la confirmation."""
     sent_payload = {}
 
     def fake_post(url, json, timeout):
@@ -81,6 +82,7 @@ def test_feedback_form_sends_last_prediction_and_displays_confirmation(monkeypat
 
 
 def test_training_button_calls_train_and_displays_result(monkeypatch):
+    """Vérifie que le bouton de réentraînement appelle l'endpoint /train et affiche le résultat."""
     calls = []
 
     def fake_post(url, **kwargs):
