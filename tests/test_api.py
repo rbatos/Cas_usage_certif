@@ -12,6 +12,16 @@ from app import main
 class FakePipeline:
     """Pipeline minimal pour tester la route sans charger le modèle réel."""
 
+    def get_params(self, deep=True):
+        return {}
+
+    @property
+    def named_steps(self):
+        return {"modele": self}
+
+    def fit(self, features, target):
+        return self
+
     def predict_proba(self, features):
         assert list(features.columns) == [
             "age",
@@ -23,10 +33,10 @@ class FakePipeline:
             "synthese_entretien",
             "departement",
         ]
-        return [[0.1, 0.7, 0.2]]
+        return [[0.1, 0.7, 0.2] for _ in range(len(features))]
 
     def predict(self, features):
-        return [1]
+        return [1] * len(features)
 
 
 @pytest.fixture
@@ -258,6 +268,11 @@ def isolated_train_paths(tmp_path, monkeypatch, synthetic_dataset):
     )
     monkeypatch.setattr(main, "BASELINE_METRICS_PATH", tmp_path / "baseline.json")
     monkeypatch.setattr(main, "FEEDBACK_PATH", tmp_path / "feedback_conseillers.csv")
+    monkeypatch.setattr(
+        main,
+        "log_training_run",
+        lambda **kwargs: ("test-run-id", "test-model-version" if kwargs["promoted"] else None),
+    )
 
 
 def test_train_returns_404_when_dataset_missing(client, tmp_path, monkeypatch):
