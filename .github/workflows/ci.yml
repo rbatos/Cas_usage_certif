@@ -126,6 +126,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Déploiement local (pull des images + redémarrage)
         run: |
-          docker compose --project-directory "$GITHUB_WORKSPACE" -f "$GITHUB_WORKSPACE/_deploy/${{ github.run_id }}/docker-compose.prod.yml" pull
-          docker compose --project-directory "$GITHUB_WORKSPACE" -f "$GITHUB_WORKSPACE/_deploy/${{ github.run_id }}/docker-compose.prod.yml" up -d --remove-orphans
+          DEPLOY_DIR="$GITHUB_WORKSPACE/_deploy/${{ github.run_id }}"
+          docker compose --project-name cas_usage_certif --project-directory "$DEPLOY_DIR" -f "$DEPLOY_DIR/docker-compose.prod.yml" pull
+          docker compose --project-name cas_usage_certif --project-directory "$DEPLOY_DIR" -f "$DEPLOY_DIR/docker-compose.prod.yml" up -d --remove-orphans
           docker image prune -f
