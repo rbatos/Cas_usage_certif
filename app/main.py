@@ -14,14 +14,13 @@ import numpy as np
 import pandas as pd
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.openapi.docs import get_redoc_html
-from lightgbm import LGBMClassifier
 from loguru import logger
 from sklearn.compose import ColumnTransformer
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.impute import SimpleImputer
 from sklearn.metrics import accuracy_score, f1_score
 from sklearn.model_selection import train_test_split
-from sklearn.pipeline import Pipeline
+from sklearn.pipeline import Pipeline, clone
 from sklearn.preprocessing import FunctionTransformer, OneHotEncoder, OrdinalEncoder, StandardScaler
 
 from app.middleware import RequestLoggingMiddleware
@@ -38,11 +37,11 @@ from app.schemas import (
 )
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
-MODEL_PATH = ROOT_DIR / "models" / "modele_lgbm_v1.0_S1_multimodale_complete.joblib"
+MODEL_PATH = ROOT_DIR / "models" / "modele_xgb_v1.0_S1_multimodale_hybride.joblib"
 MODEL_MANIFEST_PATH = ROOT_DIR / "models" / "model_manifest.json"
 MODEL_VERSION = "1.0"
-MODEL_FILENAME_TEMPLATE = "modele_lgbm_v{version}_S1_multimodale_complete.joblib"
-MODEL_METADATA_TEMPLATE = "modele_lgbm_v{version}_S1_multimodale_complete_metadata.json"
+MODEL_FILENAME_TEMPLATE = "modele_xgb_v{version}_S1_multimodale_hybride.joblib"
+MODEL_METADATA_TEMPLATE = "modele_xgb_v{version}_S1_multimodale_hybride_metadata.json"
 DATA_PATH = (
     ROOT_DIR
     / "data"
@@ -83,7 +82,7 @@ REVERSE_CLASS_LABELS = {label: index for index, label in CLASS_LABELS.items()}
 MODEL_LOCK = Lock()
 FEEDBACK_LOCK = Lock()
 HISTORY_LOCK = Lock()
-pipeline_lgbm = None
+pipeline_xgb = None
 model_load_error = None
 
 
@@ -120,8 +119,8 @@ def next_model_version() -> str:
         versions.append(str(manifest["model_version"]))
     versions.extend(
         match.group(1)
-        for path in model_directory.glob("modele_lgbm_v*_S1_multimodale_complete.joblib")
-        if (match := re.match(r"modele_lgbm_v(\d+\.\d+)_S1_multimodale_complete\.joblib", path.name))
+        for path in model_directory.glob("modele_xgb_v*_S1_multimodale_hybride.joblib")
+        if (match := re.match(r"modele_xgb_v(\d+\.\d+)_S1_multimodale_hybride\.joblib", path.name))
     )
     major, minor = max((tuple(map(int, version.split("."))) for version in versions), default=(1, 0))
     return f"{major}.{minor + 1}"
@@ -142,10 +141,10 @@ def write_promoted_model_metadata(
     except ValueError:
         dataset_source = str(DATA_PATH.parent)
     metadata = {
-        "modele": "modele_lgbm",
+        "modele": "modele_xgb",
         "model_version": version,
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "scenario": "S1_multimodale_complete",
+        "scenario": "S1_multimodale_hybride",
         "chemin": str(model_path.relative_to(MODEL_MANIFEST_PATH.parent)),
         "python_version": sys.version.split()[0],
         "numpy_version": np.__version__,
@@ -214,10 +213,10 @@ async def lifespan(app: FastAPI):
     Uvicorn s'arrête et le conteneur sort en erreur (pas d'API zombie
     qui répondrait OK avec un modèle cassé ou absent).
     """
-    global pipeline_lgbm, MODEL_PATH, MODEL_VERSION
+    global pipeline_xgb, MODEL_PATH, MODEL_VERSION
     load_model()
     yield
-    pipeline_lgbm = None
+    pipeline_xgb = None
     logger.info("Modèle libéré à l'arrêt de l'API")
 
 
@@ -255,7 +254,7 @@ def flatten_text(values):
 def load_model() -> None:
     """Charge le modèle actif en mémoire.
 
-    Cette fonction met à jour les variables globales `pipeline_lgbm`,
+    Cette fonction met à jour les variables globales `pipeline_xgb`,
     `MODEL_PATH` et `MODEL_VERSION`. En cas d'erreur, elle journalise
     l'erreur et relance l'exception.
 
@@ -265,7 +264,7 @@ def load_model() -> None:
         OSError | EOFError | ImportError | AttributeError | ValueError | MemoryError:
             Si le désérialisation du modèle échoue.
     """
-    global model_load_error, pipeline_lgbm, MODEL_PATH, MODEL_VERSION
+    global model_load_error, pipeline_xgb, MODEL_PATH, MODEL_VERSION
     try:
         manifest = read_model_manifest()
         active_model_path, active_model_version = resolve_active_model()
@@ -285,7 +284,7 @@ def load_model() -> None:
         logger.error("Modèle introuvable: {}", MODEL_PATH)
         raise FileNotFoundError(model_load_error)
     try:
-        pipeline_lgbm = joblib.load(MODEL_PATH)
+        pipeline_xgb = joblib.load(MODEL_PATH)
         model_load_error = None
         logger.info("Modèle chargé avec succès")
     except (OSError, EOFError, ImportError, AttributeError, ValueError, MemoryError) as error:
@@ -303,15 +302,15 @@ def ensure_model_loaded() -> bool:
     Returns:
         bool: True si le modèle est chargé en mémoire, False sinon.
     """
-    if pipeline_lgbm is None:
+    if pipeline_xgb is None:
         logger.debug("Modèle absent de la mémoire, tentative de chargement")
         with MODEL_LOCK:
-            if pipeline_lgbm is None:
+            if pipeline_xgb is None:
                 try:
                     load_model()
                 except Exception:
                     return False
-    return pipeline_lgbm is not None
+    return pipeline_xgb is not None
 
 
 def request_to_features(request: Demandeur) -> pd.DataFrame:
@@ -400,8 +399,8 @@ def predict(
 
     features = request_to_features(request)
     with MODEL_LOCK:
-        probabilities = pipeline_lgbm.predict_proba(features)[0]
-        predicted_class = int(pipeline_lgbm.predict(features)[0])
+        probabilities = pipeline_xgb.predict_proba(features)[0]
+        predicted_class = int(pipeline_xgb.predict(features)[0])
 
     response = PredictionResponse(
         retour_emploi=CLASS_LABELS[predicted_class],
@@ -489,60 +488,7 @@ def build_training_pipeline() -> Pipeline:
     Returns:
         Pipeline: Pipeline de prétraitement et de modèle prêt pour l'entraînement.
     """
-    numeric_columns = ["age", "anciennete_poste_ans"]
-    categorical_columns = [
-        "nationalite_hors_ue",
-        "est_allocataire",
-        "code_rome_vise",
-        "departement",
-    ]
-    ordinal_columns = ["niveau_diplome"]
-    text_columns = ["synthese_entretien"]
-    diploma_order = ["Sans diplôme", "Bac", "Bac+2", "Bac+5"]
-
-    numeric_pipeline = Pipeline(
-        [
-            ("imputer", SimpleImputer(strategy="median")),
-            ("scaler", StandardScaler()),
-        ]
-    )
-    categorical_pipeline = Pipeline(
-        [
-            ("imputer", SimpleImputer(strategy="most_frequent")),
-            ("onehot", OneHotEncoder(handle_unknown="ignore", sparse_output=False)),
-        ]
-    )
-    ordinal_pipeline = Pipeline(
-        [
-            ("imputer", SimpleImputer(strategy="most_frequent")),
-            ("ordinal", OrdinalEncoder(categories=[diploma_order])),
-        ]
-    )
-    text_pipeline = Pipeline(
-        [
-            ("imputer", SimpleImputer(strategy="constant", fill_value="")),
-            ("to_1d", FunctionTransformer(flatten_text, validate=False)),
-            ("tfidf", TfidfVectorizer(min_df=2, ngram_range=(1, 2))),
-        ]
-    )
-    preprocessor = ColumnTransformer(
-        [
-            ("num", numeric_pipeline, numeric_columns),
-            ("cat", categorical_pipeline, categorical_columns),
-            ("ord", ordinal_pipeline, ordinal_columns),
-            ("txt", text_pipeline, text_columns),
-        ]
-    )
-    model = LGBMClassifier(
-        n_estimators=400,
-        learning_rate=0.02,
-        num_leaves=24,
-        min_child_samples=10,
-        colsample_bytree=0.7,
-        random_state=42,
-        verbosity=-1,
-    )
-    return Pipeline([("preparation", preprocessor), ("modele", model)])
+    return clone(pipeline_xgb)
 
 
 def load_feedback_dataframe() -> pd.DataFrame:
@@ -599,7 +545,7 @@ def train() -> TrainResponse:
     Returns:
         TrainResponse: Statut, chemin du modèle, lignes utilisées, métriques et décision de promotion.
     """
-    global pipeline_lgbm, MODEL_PATH, MODEL_VERSION
+    global pipeline_xgb, MODEL_PATH, MODEL_VERSION
     logger.info("Début de l'entraînement monitoré")
     if not DATA_PATH.exists():
         logger.error("Jeu de données introuvable: {}", DATA_PATH)
@@ -678,7 +624,7 @@ def train() -> TrainResponse:
                 write_model_manifest(promoted_path, promoted_version, promoted_metadata_path, model_version)
                 MODEL_PATH = promoted_path
                 MODEL_VERSION = promoted_version
-                pipeline_lgbm = final_pipeline
+                pipeline_xgb = final_pipeline
             BASELINE_METRICS_PATH.write_text(json.dumps(metrics))
             logger.info(
                 "Nouveau modèle promu: version {}, {} lignes, modèle sauvegardé",

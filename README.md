@@ -69,9 +69,7 @@ Cas_usage_certif/
 │   └── api.log                              => logs middleware
 ├── mlruns/                                   => tracking MLflow local partagé avec Docker
 ├── models/
-│   ├── modele_lgbm_v1.0_S1_multimodale_complete.joblib
-│   ├── modele_lgbm_v1.1_S1_multimodale_complete.joblib
-│   ├── modele_lgbm_v1.2_S1_multimodale_complete.joblib
+│   ├── modele_xgb_v1.0_S1_multimodale_hybride.joblib
 │   ├── modele_*_metadata.json                => versions, métriques et hyperparamètres
 │   ├── model_manifest.json                    => modèle actif et hash SHA-256
 │   ├── train_metrics_baseline.json            => baseline du garde-fou anti-régression
@@ -144,7 +142,7 @@ New-Item -ItemType Directory -Force mlruns
 => Interface de suivi : `http://127.0.0.1:5000`
 
 Chaque appel à `/train` crée un run dans l’expérience `orientation-retour-emploi`.
-Les hyperparamètres LightGBM, les métriques de validation, la baseline, le nombre de
+Les hyperparamètres XGBoost, les métriques de validation, la baseline, le nombre de
 lignes et le nombre de feedbacks sont enregistrés. Les entraînements rejetés sont
 conservés dans MLflow mais ne créent pas de version de modèle.
 
@@ -234,5 +232,5 @@ Aucun secret `DEPLOY_*` n'est nécessaire avec cette approche : le job s'exécut
 
 ## 📌 Livrables attendus
 
-- Notebook d’analyse (`notebooks/matrice-notebook-romain.ipynb`)
+- Notebook d’analyse (`notebooks/rendu_certif.ipynb`)
 - Support de soutenance

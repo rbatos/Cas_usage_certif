@@ -6,7 +6,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /code
 
-# libgomp1 : runtime OpenMP requis par lightgbm au chargement du modèle
+# libgomp1 : runtime OpenMP requis par XGBoost au chargement du modèle
 RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 

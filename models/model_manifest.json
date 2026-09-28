@@ -1,7 +1,7 @@
 {
-  "model_version": "1.2",
-  "model_path": "modele_lgbm_v1.2_S1_multimodale_complete.joblib",
-  "metadata_path": "modele_lgbm_v1.2_S1_multimodale_complete_metadata.json",
-  "sha256": "1ffd33264442a6ad1dccb5235454a515aa5c1dc9e85ff806870cff160f956986",
-  "mlflow_model_version": "27"
+  "model_version": "1.1",
+  "model_path": "modele_xgb_v1.1_S1_multimodale_hybride.joblib",
+  "metadata_path": "modele_xgb_v1.1_S1_multimodale_hybride_metadata.json",
+  "sha256": "16c4e6c28e3d8c84bc4d3a968430f2d6f02f3bf3458778da54b2fe73ecedef91",
+  "mlflow_model_version": "29"
 }

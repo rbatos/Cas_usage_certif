@@ -35,7 +35,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Install libgomp1 (requis par LightGBM)
+      - name: Install libgomp1 (requis par XGBoost)
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libgomp1
       - name: Install API deps + outils de test
         run: pip install -r app/requirements.txt -r services/ui-streamlit/requirements.txt pytest httpx
@@ -52,7 +52,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Install libgomp1 (requis par LightGBM)
+      - name: Install libgomp1 (requis par XGBoost)
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libgomp1
       - name: Install API deps + outils de test
         run: pip install -r app/requirements.txt pytest httpx

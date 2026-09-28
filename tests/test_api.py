@@ -37,7 +37,7 @@ def client(monkeypatch):
     que le FakePipeline ne soit pas écrasé par un chargement réel du modèle.
     """
     monkeypatch.setattr(main, "load_model", lambda: None)
-    monkeypatch.setattr(main, "pipeline_lgbm", FakePipeline())
+    monkeypatch.setattr(main, "pipeline_xgb", FakePipeline())
     monkeypatch.setattr(main, "model_load_error", None)
     with TestClient(main.app) as test_client:
         yield test_client
@@ -252,7 +252,7 @@ def isolated_train_paths(tmp_path, monkeypatch, synthetic_dataset):
         json.dumps(
             {
                 "model_version": "1.0",
-                "model_path": "modele_lgbm_v1.0_S1_multimodale_complete.joblib",
+                "model_path": "modele_xgb_v1.0_S1_multimodale_hybride.joblib",
             }
         )
     )
@@ -277,9 +277,9 @@ def test_train_promotes_model_when_no_baseline(client, isolated_train_paths, tmp
     data = response.json()
     assert data["status"] == "trained"
     assert data["promoted"] is True
-    assert data["model_path"].endswith("modele_lgbm_v1.1_S1_multimodale_complete.joblib")
+    assert data["model_path"].endswith("modele_xgb_v1.1_S1_multimodale_hybride.joblib")
     assert data["artifact_version"] == "1.1"
-    assert (tmp_path / "modele_lgbm_v1.1_S1_multimodale_complete.joblib").exists()
+    assert (tmp_path / "modele_xgb_v1.1_S1_multimodale_hybride.joblib").exists()
     assert (tmp_path / "model_manifest.json").exists()
     assert main.BASELINE_METRICS_PATH.exists()
     assert data["mlflow_run_id"]
