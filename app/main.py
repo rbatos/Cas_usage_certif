@@ -15,13 +15,9 @@ import pandas as pd
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.openapi.docs import get_redoc_html
 from loguru import logger
-from sklearn.compose import ColumnTransformer
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.impute import SimpleImputer
 from sklearn.metrics import accuracy_score, f1_score
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline, clone
-from sklearn.preprocessing import FunctionTransformer, OneHotEncoder, OrdinalEncoder, StandardScaler
 
 from app.middleware import RequestLoggingMiddleware
 from app.mlflow_tracking import log_training_run
